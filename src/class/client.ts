@@ -17,16 +17,22 @@ import {
 } from '../lib/event.js'
 
 import {
+  gen_message_id,
+  get_unique_items,
   is_recipient,
   now,
   parse_error,
-  parse_ndk_event
+  parse_ndk_event,
+  sleep
 } from '../lib/util.js'
 
 import type {
+  EventFilter,
   EventMessage,
   NodeConfig,
+  NodeEventMap,
   SignedEvent,
+  SubFilter,
   SubResponse
 } from '../types/index.js'
 
@@ -35,20 +41,20 @@ import NDK   from '@nostr-dev-kit/ndk'
 
 import 'websocket-polyfill'
 
+const { NODE_CONFIG, SUB_CONFIG } = CONST
+
 export default class NostrNode {
   private readonly _client   : NDK
   private readonly _config   : NodeConfig
-  private readonly _evt      : EventEmitter<Record<string, any>>
+  private readonly _event    : EventEmitter<NodeEventMap>
   private readonly _inbox    : EventEmitter<Record<string, EventMessage>>
   private readonly _peers    : string[]
   private readonly _relays   : string[]
   private readonly _rpc      : EventEmitter<Record<string, EventMessage>>
   private readonly _seckey   : Buff
-  private readonly _sub      : NDKSubscription | null
+  private readonly _sub      : NDKSubscription
 
   constructor (
-    kinds   : number[],
-    peers   : string[],
     relays  : string[],
     seckey  : string,
     options : Partial<NodeConfig> = {}
@@ -56,33 +62,40 @@ export default class NostrNode {
     const signer = new NDKPrivateKeySigner(seckey)
     this._seckey = new Buff(seckey)
 
-    this._config = { ...CONST.NODE_CONFIG(), ...options }
+    this._config = { ...NODE_CONFIG(), ...options }
     this._client = new NDK({ explicitRelayUrls : relays, signer })
-    this._evt    = new EventEmitter()
+    this._event  = new EventEmitter()
     this._inbox  = new EventEmitter()
-    this._peers  = peers.filter(e => e !== this.pubkey)
+    this._peers  = this.config.peer_pks.filter(e => e !== this.pubkey)
     this._relays = relays
     this._rpc    = new EventEmitter()
 
-    this._sub    = this.client.subscribe({
-      kinds,
+    const filter : EventFilter = {
+      kinds   : this.config.kinds,
       '#p'    : [ this.pubkey ],
-      authors : peers,
-      since   : now() - 10
-    })
+      since   : now() - this.config.now_offset
+    }
+
+    if (this.peers.length !== 0) {
+      filter.authors = this.peers
+    }
+
+    this.event.emit('info', [ 'filter:', JSON.stringify(filter, null, 2) ])
+
+    this._sub = this.client.subscribe(filter)
 
     this._sub.on('event', (evt) => {
       try {
         const event = parse_ndk_event(evt)
         const error = this._filter(event)
         if (error !== null) {
-          this.evt.emit('filter', [ event.id, error ])
+          this.event.emit('filter', [ event.id, error ])
         } else {
           this._handler(event)
         }
       } catch (err) {
         console.error(err)
-        this.evt.emit('error', [ evt.id, parse_error(err) ])
+        this.event.emit('error', [ evt.id, parse_error(err) ])
       }
     })
   }
@@ -103,8 +116,9 @@ export default class NostrNode {
   _handler = (event : SignedEvent) => {
     const content = parse_msg_event(event, this._seckey.hex)
     const message = parse_envelope(content, event)
+    this.event.emit('message', message)
+    this.inbox.emit(message.id, message)
     this.rpc.emit(message.tag, message)
-    this.inbox.emit(message.mid, message)
   }
 
   _publish = async (event : SignedEvent) => {
@@ -120,8 +134,8 @@ export default class NostrNode {
     return this._config
   }
 
-  get evt () {
-    return this._evt
+  get event () {
+    return this._event
   }
 
   get inbox () {
@@ -144,43 +158,49 @@ export default class NostrNode {
     return this._rpc
   }
 
-  connect () {
-    return this.client.connect()
+  async connect (timeout ?: number) {
+    await this.client.connect(timeout)
+    await this._sub.start()
+    await sleep(this.config.start_delay)
+    this.event.emit('init', this)
+    return this
   }
 
   is_peer (pubkey : string) {
-    return this._peers.includes(pubkey)
+    return (this.peers.length === 0 || this.peers.includes(pubkey))
   }
 
   is_recip (event : SignedEvent) {
     return is_recipient(event, this.pubkey)
   }
 
-  relay (
+  async relay (
     subject : string,
     payload : string,
     peers   : string[],
-    mid?    : string 
-  ) : void {
-    mid = mid ?? Buff.random(16).hex
+    id?     : string
+  ) : Promise<string[]> {
+    id = id ?? gen_message_id()
+    const outbox = []
     for (const pk of peers) {
-      this.send(subject, payload, pk, mid)
+      outbox.push(this.send(subject, payload, pk, id))
     }
+    return Promise.all(outbox).then(e => get_unique_items(e))
   }
 
-  req (
+  async req (
     subject : string,
     payload : string,
     peers   : string[],
-    mid     : string = Buff.random(16).hex,
-    timeout : number = 5000
+    filter  : SubFilter = {}
   ) : Promise<SubResponse> {
-    const sub = this.sub(mid, peers, timeout)
-    this.relay(subject, payload, peers, mid)
+    const { id = gen_message_id() } = filter
+    const sub = this.sub({ ...filter, id, peers })
+    this.relay(subject, payload, peers, id)
     return sub
   }
 
-  send (
+  async send (
     subject : string,
     payload : string,
     peer_pk : string,
@@ -191,28 +211,42 @@ export default class NostrNode {
     return this._publish(event)
   }
 
-  sub (
-    mid     : string,
-    peers   : string[],
-    timeout : number = 5000
-  ) : Promise<SubResponse> {
+  async sub (config : SubFilter) : Promise<SubResponse> {
+    const conf      = { ...SUB_CONFIG(), ...config }
+    const has_peers = conf.peers.length > 0
     return new Promise(resolve => {
+      const { id, peers, tag, strict, timeout } = conf
+
       const authors : Set<string>       = new Set()
       const inbox   : Set<EventMessage> = new Set()
 
-      const timer = setTimeout(() => {
-        const blame = peers.filter(e => !authors.has(e))
-        resolve({ ok : false, blame, err : 'timeout' })
-      }, timeout)
+      const resolver = () => {
+        if (has_peers && strict) {
+          const blame = peers.filter(e => !authors.has(e))
+          resolve({ ok : false, blame, err : 'timeout' })
+        } else {
+          resolve({ ok : true, data: [ ...inbox ] })
+        }
+      }
 
-      this.inbox.within(mid, (event) => {
+      const timer = setTimeout(resolver, timeout)
+
+      const handler = (event : EventMessage) => {
         authors.add(event.ctx.pubkey)
         inbox.add(event)
-        if (peers.every(e => authors.has(e))) {
+        if (has_peers && peers.every(e => authors.has(e))) {
           clearTimeout(timer)
           resolve({ ok: true, data: [ ...inbox ] })
         }
-      }, timeout)
+      }
+
+      if (typeof id === 'string') {
+        this.inbox.within(id, (event) => handler(event), timeout)
+      }
+
+      if (typeof tag === 'string') {
+        this.rpc.within(tag, (event) => handler(event), timeout)
+      }
     })
   }
 }

@@ -5,5 +5,9 @@ export interface EventConfig {
 }
 
 export interface NodeConfig {
-  timeout : number
+  kinds       : number[]
+  peer_pks    : string[]
+  now_offset  : number
+  req_timeout : number
+  start_delay : number
 }

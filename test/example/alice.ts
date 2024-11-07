@@ -2,12 +2,9 @@
 import { NostrNode } from '@cmdcode/nostr-p2p'
 
 import {
-  gen_msg_id,
+  gen_message_id,
   get_pubkey,
-  sleep
 } from '@cmdcode/nostr-p2p/lib'
-
-const KINDS = [ 20004 ]
 
 const PEERS = [
   'fb19683d99686c11243cb854968e2fb9657df3babfd65dc51acdeb95aef6743e',
@@ -25,31 +22,28 @@ const alice_pk = get_pubkey(alice_sk)
 console.log('alice sk:', alice_sk)
 console.log('alice pk:', alice_pk)
 
-const node = new NostrNode(KINDS, PEERS, RELAYS, alice_sk)
-const mid  = gen_msg_id()
+const node = new NostrNode(RELAYS, alice_sk)
+const mid  = gen_message_id()
 
-node.evt.on('filter', err => console.log('filter', err))
+node.event.on('info',   (args) => console.log('info:', args))
+node.event.on('error',  (args) => console.log('error:', args))
+node.event.on('filter', (args) => console.log('filter:', args))
 
 node.inbox.on(mid, msg => {
-  console.log('alice received msg:', msg.mid, msg.dat)
+  console.log('alice received msg:', msg.id, msg.dat)
 })
 
 node.rpc.on('pong', msg => {
   console.log('alice received rpc:', msg.tag, msg.dat)
 })
 
+node.event.on('init', async () => {
+  console.log('connected')
+  console.log('sending message ...')
+
+  const res = await node.req('ping', 'ping!', PEERS, { strict: false })
+
+  console.log('events:', res)
+})
+
 await node.connect()
-
-console.log('connected')
-
-await sleep(2000)
-
-console.log('sending message ...')
-
-// const relays = await node.send('ping', 'ping!', PEERS[0], mid)
-
-// console.log(relays)
-
-const res = await node.req('ping', 'ping!', PEERS)
-
-console.log('events:', res)

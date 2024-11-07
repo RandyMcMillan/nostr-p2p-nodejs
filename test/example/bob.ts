@@ -1,12 +1,5 @@
-import { NostrNode }         from '@cmdcode/nostr-p2p'
-import { get_pubkey, sleep } from '@cmdcode/nostr-p2p/lib'
-
-const KINDS = [ 20004 ]
-
-const PEERS = [
-  '838c5a02218f2e9ae120dfbd397ee7352f567f3cf1eba044808947b4310c2bbf',
-  'd6fe5186bf6d3f09ac0804bd70df4d13283d2bde5498809a0fb58e12735aace1'
-]
+import { NostrNode }  from '@cmdcode/nostr-p2p'
+import { get_pubkey } from '@cmdcode/nostr-p2p/lib'
 
 const RELAYS = [
   'wss://relay.nostrdice.com',
@@ -19,15 +12,18 @@ const bob_pk = get_pubkey(bob_sk)
 console.log('bob sk:', bob_sk)
 console.log('bob pk:', bob_pk)
 
-const node = new NostrNode(KINDS, PEERS, RELAYS, bob_sk)
+const node = new NostrNode(RELAYS, bob_sk)
 
-node.evt.on('filter', err => console.log('filter', err))
+node.event.on('info',   (args) => console.log('info:', args))
+node.event.on('error',  (args) => console.log('error:', args))
+node.event.on('filter', (args) => console.log('filter:', args))
 
 node.rpc.on('ping', async msg => {
   console.log('bob received rpc:', msg.tag, msg.dat)
-  await sleep(2000)
   console.log('sending response ...')
-  const relays = await node.send('pong', 'pong!', msg.ctx.pubkey, msg.mid)
+
+  const relays = await node.send('pong', 'pong!', msg.ctx.pubkey, msg.id)
+  console.log('broadcast to relays:')
   console.log(relays)
 })
 

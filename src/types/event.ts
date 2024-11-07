@@ -1,3 +1,13 @@
+export interface EventFilter {
+  ids     ?: string[]
+  authors ?: string[]
+  kinds   ?: number[]
+  since   ?: number
+  until   ?: number
+  limit   ?: number
+  [ key : string ] : any | undefined
+}
+
 export interface EventTemplate {
   content    : string
   created_at : number
@@ -20,6 +30,6 @@ export type MessageEnvelope = [
 export interface EventMessage <T = string> {
   ctx : SignedEvent
   dat : T
-  mid : string
+  id  : string
   tag : string
 }

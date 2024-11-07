@@ -30,7 +30,7 @@ export namespace assert {
   }
 }
 
-export function gen_msg_id () {
+export function gen_message_id () {
   return Buff.random(16).hex
 }
 
@@ -79,4 +79,14 @@ export function parse_ndk_event (
   assert.exists(kind)
   assert.exists(sig)
   return { content, created_at, id, kind, pubkey, sig, tags }
+}
+
+export function get_unique_items(arr : string[][]) : string[] {
+  const ret : Set<string> = new Set()
+  for (const row of arr) {
+    for (const item of row) {
+      ret.add(item)
+    }
+  }
+  return [ ...ret ]
 }

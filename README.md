@@ -16,78 +16,79 @@ Here is a basic example of how to start a node:
 ```ts
 import { NostrNode } from '@cmdcode/nostr-p2p'
 
-// A list of event kinds to subscribe.
-const KINDS = [ 20004 ]
-
-// A list of peers to listen for.
-const PEERS = [
-  'fb19683d99686c11243cb854968e2fb9657df3babfd65dc51acdeb95aef6743e',
-  'd6fe5186bf6d3f09ac0804bd70df4d13283d2bde5498809a0fb58e12735aace1'
-]
-
 // A list of relays to use.
-const RELAYS = [
+const relays = [
   'wss://relay.nostrdice.com',
   'wss://relay.snort.social'
 ]
 
 // Create a new node.
-const node = new NostrNode(KINDS, PEERS, RELAYS, alice_sk)
+const node = new NostrNode(relays, seckey)
 
 // Connect your node to the relays.
 await node.connect()
 ```
 
-There are three event emitter interfaces that you can hook into:
+There are four event emitter interfaces that you can hook into:
 
-`evt   :` Internal events emitted by the node.  
+`event :` Internal events emitted by the node.  
 `inbox :` Subscribe to messages via their message id.  
-`rpc   :` Subscribe to messages via their subject tag.  
+`sub   :` Subscribe to messages via their message tag.  
 
 Here is an example of how to use these interfaces:
 
 ```ts
 // Internal events are emitted and received on the event interface.
-node.evt.on('filter', err => console.log('filter', err))
+node.event.on('init' => ()     => console.log('node connected!'))
+node.event.on('info',   (args) => console.log('info:', args))
+node.event.on('error',  (args) => console.log('error:', args))
+node.event.on('filter', (args) => console.log('filter:', args))
+node.event.on('message', (msg) => console.log('message:', msg))
 
-// Messages are received on the `rpc` interface via their subject tag.
-node.rpc.on('pong', msg => {
-  console.log('received rpc:', msg.tag, msg.dat)
+// Subscribe to messages via their message id.
+node.inbox.on(message_id, (msg) => {
+  console.log('received msg:', msg.id, msg.dat)
 })
 
-// Messages are also recieved on the `inbox` interface via their message id.
-node.inbox.on(mid, msg => {
-  console.log('received msg:', msg.mid, msg.dat)
+// Subscribe to messages via their message tag.
+node.rpc.on('pong', (msg) => {
+  console.log('received msg:', msg.tag, msg.dat)
 })
 ```
 
 There are several ways that you can send messages, and subscribe to responses:
 
 ```ts
-import { gen_msg_id } from '@cmdcode/nostr-p2p/lib'
+import { gen_message_id } from '@cmdcode/nostr-p2p/lib'
+
+// An example list of peer pubkeys:
+const peers = [
+  'fb19683d99686c11243cb854968e2fb9657df3babfd65dc51acdeb95aef6743e',
+  'd6fe5186bf6d3f09ac0804bd70df4d13283d2bde5498809a0fb58e12735aace1'
+]
 
 // Generate a message id for identifying responses.
-const mid = gen_msg_id()
+const message_id = gen_message_id()
 
 // Send a message to a single peer.
-await node.send('ping', 'ping!', PEERS[0], mid)
+await node.send('ping', 'ping!', peers[0], message_id)
 
 // Relay a message to multiple peers.
-await node.relay('ping', 'ping!', PEERS, mid)
+await node.relay('ping', 'ping!', peers, message_id)
 
 // Listen for expected responses from peers (with a timeout).
-const sub = await node.sub(mid, PEERS)
+const res = await node.sub({ id : message_id, timeout: 5000 })
 
-// Send a message to multiple peers, and listen for responses (with a timeout).
-const res = await node.req('ping', 'ping!', PEERS)
+// Send a message to multiple peers, and listen for responses.
+const res = await node.req('ping', 'ping!', peers, { strict: true, timeout: 5000 })
 ```
 
-Requests to multiple peers are collected and returned in a simple interface:
+Requests and Subscriptions are collected and returned in a simple interface:
 
 ```ts
 res: {
   ok: true,
-  data: [
+  inbox: [
     {
       ctx: [Object], // Nostr signed note object.
       dat: 'pong!',
@@ -104,17 +105,8 @@ res: {
 }
 ```
 
-If you fail to collect responses from all peers before the timeout, you get an error response (with blame):
+If you specify a list of peers, and collect responses from all peers before the timeout, then the subscription will return early. Otherwise, it will fail (unless 'strict' is set to false).
 
-```ts
-res: {
-  ok: false,
-  blame: [
-    'fb19683d99686c11243cb854968e2fb9657df3babfd65dc51acdeb95aef6743e'
-  ],
-  err: 'timeout'
-}
-```
 
 ## Development / Testing
 

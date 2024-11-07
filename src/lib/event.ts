@@ -23,6 +23,8 @@ import type {
 import CONST  from '../const.js'
 import Schema from '../schema/index.js'
 
+const  { EVENT_CONFIG } = CONST
+
 export function create_envelope (
   subject : string,
   payload : string,
@@ -38,8 +40,8 @@ export function parse_envelope (
   const json     = JSON.parse(content)
   const schema   = Schema.event.envelope
   const envelope = schema.parse(json)
-  const [ tag, mid, dat ] = envelope
-  return { ctx: event, dat, mid, tag }
+  const [ tag, id, dat ] = envelope
+  return { ctx: event, dat, id, tag }
 }
 
 export function create_msg_event (
@@ -55,7 +57,7 @@ export function create_msg_event (
   const encrypted = encrypt_content(secret, content)
   // Create an event template.
   const event = {
-    ...CONST.EVENT_CONFIG(),
+    ...EVENT_CONFIG(),
     pubkey,
     content : encrypted,
   }
