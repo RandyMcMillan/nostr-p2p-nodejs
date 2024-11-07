@@ -3,7 +3,7 @@ import { now } from './lib/util.js'
 import type { EventConfig, NodeConfig } from './types/index.js'
 
 const EVENT_CONFIG = () : EventConfig => {
-    return {
+  return {
     created_at : now(),
     kind       : 20004,
     tags       : []
