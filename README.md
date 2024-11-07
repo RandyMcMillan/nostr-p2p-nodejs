@@ -29,11 +29,11 @@ const node = new NostrNode(relays, seckey)
 await node.connect()
 ```
 
-There are four event emitter interfaces that you can hook into:
+There are three event emitter interfaces that you can hook into:
 
 `event :` Internal events emitted by the node.  
 `inbox :` Subscribe to messages via their message id.  
-`sub   :` Subscribe to messages via their message tag.  
+`rpc   :` Subscribe to messages via their message tag.  
 
 Here is an example of how to use these interfaces:
 
