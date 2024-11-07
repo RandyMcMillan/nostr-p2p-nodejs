@@ -225,7 +225,7 @@ export default class NostrNode {
           const blame = peers.filter(e => !authors.has(e))
           resolve({ ok : false, blame, err : 'timeout' })
         } else {
-          resolve({ ok : true, data: [ ...inbox ] })
+          resolve({ ok : true, inbox: [ ...inbox ] })
         }
       }
 
@@ -236,7 +236,7 @@ export default class NostrNode {
         inbox.add(event)
         if (has_peers && peers.every(e => authors.has(e))) {
           clearTimeout(timer)
-          resolve({ ok: true, data: [ ...inbox ] })
+          resolve({ ok: true, inbox: [ ...inbox ] })
         }
       }
 

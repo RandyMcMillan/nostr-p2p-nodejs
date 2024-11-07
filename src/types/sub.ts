@@ -11,8 +11,8 @@ export interface SubFilter {
 }
 
 export interface OkResponse <T> {
-  ok   : true
-  data : EventMessage<T>[]
+  ok    : true
+  inbox : EventMessage<T>[]
 }
 
 export interface ErrorResponse {
