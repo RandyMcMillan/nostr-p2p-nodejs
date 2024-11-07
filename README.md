@@ -40,9 +40,9 @@ await node.connect()
 
 There are three event emitter interfaces that you can hook into:
 
-`evt   :` Internal events emitted by the node.
-`inbox :` Subscribe to messages via their message id.
-`rpc   :` Subscribe to messages via their subject tag.
+`evt   :` Internal events emitted by the node.  
+`inbox :` Subscribe to messages via their message id.  
+`rpc   :` Subscribe to messages via their subject tag.  
 
 ```ts
 // Internal events are emitted and received on the event interface.
@@ -126,7 +126,18 @@ Run a different user in each terminal, and make sure to run `alice` last, since 
 
 ## Resources
 
-Noble curves
-Noble cipher
-NDK
-zod
+**Noble Curves**  
+Audited & minimal JS implementation of elliptic curve cryptography.  
+https://github.com/paulmillr/noble-curves
+
+**Noble Ciphers**  
+Audited & minimal JS implementation of AES.  
+https://github.com/paulmillr/noble-ciphers
+
+**Nostr Development Kit**  
+Build Nostr-related applications.  
+https://github.com/nostr-dev-kit/ndk
+
+**Zod**  
+TypeScript-first schema validation.  
+https://github.com/colinhacks/zod

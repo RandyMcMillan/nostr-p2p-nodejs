@@ -1,7 +1,7 @@
 {
   "name": "@cmdcode/nostr-p2p",
   "version": "0.0.1",
-  "description": "Basic peer-to-peer messaging, transmitted by relays.",
+  "description": "Basic peer-to-peer messaging, transmitted over relays.",
   "author": "Christopher Scott",
   "license": "MIT",
   "repository": {
