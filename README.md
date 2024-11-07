@@ -44,6 +44,8 @@ There are three event emitter interfaces that you can hook into:
 `inbox :` Subscribe to messages via their message id.  
 `rpc   :` Subscribe to messages via their subject tag.  
 
+Here is an example of how to use these interfaces:
+
 ```ts
 // Internal events are emitted and received on the event interface.
 node.evt.on('filter', err => console.log('filter', err))
