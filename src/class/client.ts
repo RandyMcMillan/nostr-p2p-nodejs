@@ -5,7 +5,7 @@ import { get_pubkey }   from '../lib/crypto.js'
 import {
   NDKEvent,
   NDKPrivateKeySigner,
-  NDKSubscription,
+  NDKSubscription
 } from '@nostr-dev-kit/ndk'
 
 import {
