@@ -17,10 +17,10 @@ Nostr-P2P is a light-weight SDK for building your own end-to-end encrypted, peer
 
 ### Roadmap
 
-* Peer discovery.
-* Public profiles.
-* Private stores.
-* Shared stores.
+* Peer discovery: Currently, each node must be manually configured with a list of peers. It would be nice to have a message channel for peer discovery, with joins and leaves.
+* Public profiles: Nodes should be able to take advantage of public profiles to advertise their presence and metadata.
+* Private stores: Each node should be able to maintain a private store of data for configuration and state.
+* Shared stores: Nodes should be able to share data repositories with each other via shared stores.
 
 ## Installation
 
@@ -191,10 +191,10 @@ The multicast configuration allows you to fine-tune how responses are collected.
 
 ## Dependencies
 
-- `@noble/curves`: Cryptographic primitives
-- `@noble/ciphers`: AES encryption
-- `nostr-tools`: Nostr protocol utilities
-- `zod`: Schema validation
+- `@noble/curves --` : Cryptographic primitives
+- `@noble/ciphers -` : AES encryption
+- `nostr-tools ----` : Nostr protocol utilities
+- `zod ------------` : Schema validation
 
 ## Development
 
