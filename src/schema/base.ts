@@ -7,6 +7,7 @@ const big     = z.bigint(),
       uint    = z.number().max(Number.MAX_SAFE_INTEGER),
       str     = z.string(),
       stamp   = z.number().min(500_000_000).max(Number.MAX_SAFE_INTEGER),
+      url     = z.string().url(),
       any     = z.any()
 
 const hex = z.string()
@@ -44,5 +45,6 @@ export default {
   pubkey,
   str,
   stamp,
-  uint
+  uint,
+  url
 }

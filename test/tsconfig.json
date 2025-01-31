@@ -2,10 +2,11 @@
   "compilerOptions": {
     "baseUrl": "..",
     "paths": {
-      "@/*"                    : [ "src/*"      ],
-      "@/test/*"               : [ "test/src/*" ],
-      "@cmdcode/nostr-p2p"     : [ "src/index.js" ],
-      "@cmdcode/nostr-p2p/lib" : [ "src/lib/index.js" ]
+      "@/*"                     : [ "src/*"      ],
+      "@/test/*"                : [ "test/src/*" ],
+      "@cmdcode/nostr-p2p"      : [ "src/index.js" ],
+      "@cmdcode/nostr-p2p/lib"  : [ "src/lib/index.js" ],
+      "@cmdcode/nostr-p2p/util" : [ "src/util/index.js" ]
     },
     "module": "NodeNext",
     "target": "ESNext",

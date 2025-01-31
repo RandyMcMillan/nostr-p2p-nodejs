@@ -1,22 +1,11 @@
-import { EventMessage } from './event.js'
-
-export type SubResponse <T = any> = OkResponse<T> | ErrorResponse
-
 export interface SubFilter {
-  id      ?: string
-  peers   ?: string[]
-  strict  ?: boolean
-  tag     ?: string
-  timeout ?: number
+  id    ?: string
+  peers ?: string[]
+  tag   ?: string
 }
 
-export interface OkResponse <T> {
-  ok    : true
-  inbox : EventMessage<T>[]
+export interface SubConfig {
+  threshold ?: number
+  timeout   ?: number
 }
 
-export interface ErrorResponse {
-  ok    : false
-  blame : string[]
-  err   : string
-}

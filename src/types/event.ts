@@ -1,3 +1,9 @@
+export interface EventConfig {
+  created_at : number
+  kind       : number
+  tags       : string[][]
+}
+
 export interface EventFilter {
   ids     ?: string[]
   authors ?: string[]
@@ -16,20 +22,10 @@ export interface EventTemplate {
   tags       : string[][]
 }
 
-export interface SignedEvent extends EventTemplate {
-  id  : string
-  sig : string
+export interface UnsignedEvent extends EventTemplate {
+  id : string
 }
 
-export type MessageEnvelope = [
-  event_tag  : string,
-  message_id : string,
-  payload    : string 
-]
-
-export interface EventMessage <T = string> {
-  ctx : SignedEvent
-  dat : T
-  id  : string
-  tag : string
+export interface SignedEvent extends UnsignedEvent {
+  sig : string
 }

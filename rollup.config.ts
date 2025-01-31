@@ -1,6 +1,6 @@
 import commonjs    from '@rollup/plugin-commonjs'
 import json        from '@rollup/plugin-json'
-import nodeResolve from '@rollup/plugin-node-resolve'
+import resolve     from '@rollup/plugin-node-resolve'
 import terser      from '@rollup/plugin-terser'
 import typescript  from '@rollup/plugin-typescript'
 
@@ -17,6 +17,7 @@ const onwarn = (warning) => {
   ) {
     return
   }
+  console.log(warning)
   throw new Error(warning)
 }
 
@@ -38,16 +39,17 @@ export default {
     {
       file: 'dist/script.js',
       format: 'iife',
-      name: 'nostrp2p',
+      name: 'nostr_p2p',
       plugins: [terser()],
-      sourcemap: true,
-      globals : {
-        'ws' : 'WebSocket'
-      }
+      sourcemap: true
     }
   ],
-  external : ['ws'],
-  plugins: [ typescript(), nodeResolve(), commonjs(), json() ],
+  plugins: [
+    resolve({ extensions : [ '.js', '.ts' ]}),
+    typescript(),
+    commonjs(),
+    json()
+  ],
   strictDeprecations: true,
   treeshake
 }

@@ -14,15 +14,15 @@ console.log('carol pk:', carol_pk)
 
 const node = new NostrNode(RELAYS, carol_sk)
 
-node.event.on('info',   (args) => console.log('info:', args))
-node.event.on('error',  (args) => console.log('error:', args))
-node.event.on('filter', (args) => console.log('filter:', args))
+node.on('info',   (args) => console.log('info:', args))
+node.on('error',  (args) => console.log('error:', args))
+node.on('filter', (args) => console.log('filter:', args))
 
-node.rpc.on('ping', async msg => {
-  console.log('carol received rpc:', msg.tag, msg.dat)
+node.mbox.tag.on('pong', async msg => {
+  console.log('carol received rpc:', msg.tag, msg.data)
   console.log('sending response ...')
 
-  const relays = await node.send('pong', 'pong!', msg.ctx.pubkey, msg.id)
+  const relays = await node.send({ tag: 'pong', data: 'pong!' }, msg.ctx.pubkey)
   console.log('broadcast to relays:')
   console.log(relays)
 })

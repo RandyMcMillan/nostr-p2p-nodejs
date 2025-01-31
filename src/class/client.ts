@@ -1,252 +1,397 @@
-import { Buff }         from '@cmdcode/buff'
-import { EventEmitter } from './emitter.js'
-import { get_pubkey }   from '../lib/crypto.js'
+import EventEmitter from './emitter.js'
+
+import { Buff }           from '@cmdcode/buff'
+import { get_pubkey }     from '../lib/crypto.js'
+import { gen_message_id } from '../lib/util.js'
+import { SimplePool }     from 'nostr-tools'
+import { SubCloser }      from 'nostr-tools/abstract-pool'
 
 import {
-  NDKEvent,
-  NDKPrivateKeySigner,
-  NDKSubscription
-} from '@nostr-dev-kit/ndk'
-
-import {
+  create_payload,
   create_envelope,
-  create_msg_event,
   parse_envelope,
-  parse_msg_event,
-  verify_event,
-} from '../lib/event.js'
+  parse_payload
+} from '../lib/message.js'
 
 import {
-  gen_message_id,
-  get_unique_items,
-  is_recipient,
-  now,
-  parse_error,
-  parse_ndk_event,
-  sleep
-} from '../lib/util.js'
+  verify_relays,
+  verify_seckey
+} from '../lib/validate.js'
 
 import type {
   EventFilter,
-  EventMessage,
+  MessageData,
   NodeConfig,
   NodeEventMap,
   SignedEvent,
+  SubConfig,
+  SubResponse,
+  NodeMessageMap,
+  MessageTemplate,
   SubFilter,
-  SubResponse
+  ResolveReason,
+  PubResponse,
+  SignedMessage,
+  BroadcastResponse,
+  MessageIdResponse,
+  MulticastResponse
 } from '../types/index.js'
 
-import CONST from '../const.js'
-import NDK   from '@nostr-dev-kit/ndk'
+import * as CONFIG from '../config.js'
+import * as Util   from '../util/index.js'
 
 import 'websocket-polyfill'
 
-const { NODE_CONFIG, SUB_CONFIG } = CONST
+/**
+ * Default filter configuration for Nostr events.
+ * Sets up basic event filtering for kind 20004 events.
+ */
+const FILTER_CONFIG = () => {
+  return {
+    kinds : [ 20004 ],    // Filter for specific Nostr event type
+    since : Util.now()    // Only get events from current time onwards
+  }
+}
 
-export default class NostrNode {
-  private readonly _client   : NDK
-  private readonly _config   : NodeConfig
-  private readonly _event    : EventEmitter<NodeEventMap>
-  private readonly _inbox    : EventEmitter<Record<string, EventMessage>>
-  private readonly _peers    : string[]
+/**
+ * Default configuration settings for a Nostr node.
+ */
+const NODE_CONFIG = () => {
+  return {
+    debug        : false as const,
+    req_timeout  : 5000,
+    since_offset : 5,
+    start_delay  : 2000
+  }
+}
+
+/**
+ * NostrNode provides a complete implementation of a Nostr client node.
+ * Handles message routing, relay connections, and event processing.
+ */
+export default class NostrNode extends EventEmitter <NodeEventMap> {
+  // Core node components
+  private readonly _conf     : NodeConfig
+  private readonly _filter   : EventFilter
+  private readonly _pool     : SimplePool    // Manages relay connections
+  private readonly _pubkey   : string
   private readonly _relays   : string[]
-  private readonly _rpc      : EventEmitter<Record<string, EventMessage>>
-  private readonly _seckey   : Buff
-  private readonly _sub      : NDKSubscription
+  private readonly _seckey   : Buff          // Private key for signing messages
 
+  // Message routing system
+  private readonly _inbox : NodeMessageMap = {
+    event : new EventEmitter(),  // General event handling
+    id    : new EventEmitter(),  // Route by message ID
+    peer  : new EventEmitter(),  // Route by peer pubkey
+    tag   : new EventEmitter()   // Route by message tag
+  }
+  
+  private _sub : SubCloser | null = null  // Active relay subscription
+
+  /**
+   * Creates a new NostrNode instance.
+   * @param relays   Array of relay URLs to connect to
+   * @param seckey   Secret key in hex format
+   * @param options  Optional configuration parameters
+   * @throws {Error} If relays array is invalid or secret key is malformed
+   */
   constructor (
     relays  : string[],
     seckey  : string,
     options : Partial<NodeConfig> = {}
   ) {
-    const signer = new NDKPrivateKeySigner(seckey)
+    super()
+    
+    // Validate inputs before initialization
+    verify_relays(relays)
+    verify_seckey(seckey)
+
     this._seckey = new Buff(seckey)
-
-    this._config = { ...NODE_CONFIG(), ...options }
-    this._client = new NDK({ explicitRelayUrls : relays, signer })
-    this._event  = new EventEmitter()
-    this._inbox  = new EventEmitter()
-    this._peers  = this.config.peer_pks.filter(e => e !== this.pubkey)
+    this._pubkey = get_pubkey(this._seckey.hex)
+  
+    this._conf   = get_node_config(options)
+    this._filter = get_filter_config(options.filter)
+    this._pool   = new SimplePool()
     this._relays = relays
-    this._rpc    = new EventEmitter()
 
-    const filter : EventFilter = {
-      kinds   : this.config.kinds,
-      '#p'    : [ this.pubkey ],
-      since   : now() - this.config.now_offset
+    // Add our pubkey to the filter to receive direct messages
+    this.filter['#p'] = [...this.filter['#p'] ?? [], this.pubkey]
+
+    this.emit('info', [ 'filter:', JSON.stringify(this.filter, null, 2) ])
+  }
+
+  /**
+   * Processes incoming Nostr events.
+   * @param event    Signed Nostr event to process
+   * @emits message  When event is successfully processed
+   * @emits bounced  When event processing fails
+   */
+  private _handler = (event : SignedEvent) => {
+    try {
+      // Decrypt and parse the incoming message
+      const payload = parse_envelope(event, this._seckey.hex)
+      const msg     = parse_payload(payload, event)
+
+      // Route message to all relevant subscribers
+      this.emit('message', msg)
+      this.inbox.id.emit(msg.id, msg)
+      this.inbox.peer.emit(msg.env.pubkey, msg)
+      this.inbox.tag.emit(msg.tag, msg)
+    } catch (err) {
+      this.emit('bounced', [ event.id, Util.parse_error(err) ])
     }
+  }
 
-    if (this.peers.length !== 0) {
-      filter.authors = this.peers
-    }
+  /**
+   * Internal method to publish messages to the Nostr network.
+   * @param message  Message data to publish
+   * @param peer_pk  Target peer's public key
+   * @param cache    Optional cache for tracking message status
+   * @returns        Publication status and message ID
+   */
+  private _publish = async (
+    message : MessageData,
+    peer_pk : string,
+    cache?  : Map<string, PubResponse>
+  ) : Promise<PubResponse & MessageIdResponse> => {  
+    // Create and sign the message envelope
+    const payload  = create_payload(message.tag, message.data, message.id)
+    const event    = create_envelope(payload, peer_pk, this._seckey.hex)
+    const signed   = { ...message, env : event }
 
-    this.event.emit('info', [ 'filter:', JSON.stringify(filter, null, 2) ])
+    // Publish to all connected relays
+    const receipts = this._pool.publish(this.relays, event)
+    this._inbox.event.emit('published', signed)
 
-    this._sub = this.client.subscribe(filter)
+    return Promise.all(receipts).then(acks => {
+      // Track successful and failed relay deliveries
+      const fails  = this.relays.filter(r => !acks.includes(r))
+      const msg_id = message.id
+      const ok     = acks.length > 0
+      const res    = { acks, fails, ok, peer_pk }
 
-    this._sub.on('event', (evt) => {
-      try {
-        const event = parse_ndk_event(evt)
-        const error = this._filter(event)
-        if (error !== null) {
-          this.event.emit('filter', [ event.id, error ])
-        } else {
-          this._handler(event)
-        }
-      } catch (err) {
-        console.error(err)
-        this.event.emit('error', [ evt.id, parse_error(err) ])
-      }
+      if (cache !== undefined) cache.set(peer_pk, res)
+      this._inbox.event.emit('settled', { ...res, msg_id })
+      return { ...res, ok, msg_id }
     })
   }
 
-  _filter = (event : SignedEvent) => {
-    const err = verify_event(event)
-    if (err !== null) {
-      return err
-    } else if (!this.is_peer(event.pubkey)) {
-      return 'author not in peer list'
-    } else if (!this.is_recip(event)) {
-      return 'pubkey not in recipient list'
-    } else {
-      return err
-    }
+  get config() : NodeConfig {
+    return this._conf
   }
 
-  _handler = (event : SignedEvent) => {
-    const content = parse_msg_event(event, this._seckey.hex)
-    const message = parse_envelope(content, event)
-    this.event.emit('message', message)
-    this.inbox.emit(message.id, message)
-    this.rpc.emit(message.tag, message)
+  get filter() : EventFilter {
+    return this._filter
   }
 
-  _publish = async (event : SignedEvent) => {
-    const evt = new NDKEvent(this.client, event)
-    return evt.publish().then(set => [ ...set ].map(e => e.url))
-  }
-
-  get client () {
-    return this._client
-  }
-
-  get config () {
-    return this._config
-  }
-
-  get event () {
-    return this._event
-  }
-
-  get inbox () {
+  get inbox() : NodeMessageMap {
     return this._inbox
   }
 
-  get peers () {
-    return this._peers
+  get pubkey() : string {
+    return this._pubkey
   }
 
-  get pubkey () {
-    return get_pubkey(this._seckey.hex)
-  }
-
-  get relays () {
+  get relays() : string[] {
     return this._relays
   }
 
-  get rpc () {
-    return this._rpc
+  /**
+   * Broadcasts a message to multiple peers simultaneously.
+   * @param message  Message template to broadcast
+   * @param peers    Array of peer pubkeys to send to
+   * @returns        Broadcast status including acks and failures
+   */
+  async broadcast (
+    message : MessageTemplate,
+    peers   : string[],
+  ) : Promise<BroadcastResponse> {
+    const cache  = new Map<string, PubResponse>()
+    const msg    = finalize_message(message)
+    // Send to all peers in parallel
+    const outbox = peers.map(pk => this.publish(msg, pk))
+
+    return Promise.all(outbox).then(settled => {
+      // Collect success/failure stats
+      const ok    = settled.every(r => r.ok)
+      const acks  = settled.filter(r => r.ok).map(r => r.peer_pk)
+      const fails = settled.filter(r => !r.ok).map(r => r.peer_pk)
+      const res   = { ok, acks, cache, fails, msg_id : msg.id, peers }
+
+      settled.forEach(r => cache.set(r.peer_pk, r))
+      this.emit('broadcast', res)
+      return { ...res }
+    })
   }
 
-  async connect (timeout ?: number) {
-    await this.client.connect(timeout)
-    await this._sub.start()
-    await sleep(this.config.start_delay)
-    this.event.emit('init', this)
+  /**
+   * Establishes connections to configured relays.
+   * @returns      This node instance
+   * @emits ready  When connections are established
+   */
+  async connect () : Promise<this> {
+    // Start listening for events on all relays
+    this._sub = this._pool.subscribeMany(this.relays, [ this._filter ], {
+      onevent : this._handler
+    })
+    this.emit('ready', this)
     return this
   }
 
-  is_peer (pubkey : string) {
-    return (this.peers.length === 0 || this.peers.includes(pubkey))
-  }
-
-  is_recip (event : SignedEvent) {
-    return is_recipient(event, this.pubkey)
-  }
-
-  async relay (
-    subject : string,
-    payload : string,
-    peers   : string[],
-    id?     : string
-  ) : Promise<string[]> {
-    id = id ?? gen_message_id()
-    const outbox = []
-    for (const pk of peers) {
-      outbox.push(this.send(subject, payload, pk, id))
+  /**
+   * Gracefully closes all relay connections.
+   * @emits close  When all connections are terminated
+   */
+  async close () : Promise<void> {
+    if (this._sub !== null) {
+      this._sub.close()
     }
-    return Promise.all(outbox).then(e => get_unique_items(e))
+    if (this._pool.close !== undefined) {
+      this._pool.close(this.relays)
+    }
+    this.emit('close', this)
   }
 
-  async req (
-    subject : string,
-    payload : string,
-    peers   : string[],
-    filter  : SubFilter = {}
-  ) : Promise<SubResponse> {
-    const { id = gen_message_id() } = filter
-    const sub = this.sub({ ...filter, id, peers })
-    this.relay(subject, payload, peers, id)
-    return sub
-  }
-
-  async send (
-    subject : string,
-    payload : string,
+  /**
+   * Sends a request to a single peer and awaits response.
+   * @param message  Message template to send
+   * @param peer_pk  Target peer's public key
+   * @param timeout  Maximum wait time in ms
+   * @returns        Subscription response
+   */
+  async request (
+    message : MessageTemplate,
     peer_pk : string,
-    msg_id  : string = Buff.random(16).hex
-  ) : Promise<string[]> {
-    const content = create_envelope(subject, payload, msg_id)
-    const event   = create_msg_event(content, peer_pk, this._seckey.hex)
-    return this._publish(event)
+    timeout : number = this.config.req_timeout
+  ) : Promise<SubResponse> {
+    const msg = finalize_message(message)
+    // Set up listener before sending message
+    const receipt = this.subscribe({ id : msg.id, peers : [ peer_pk ] }, { timeout })
+    this.publish(msg, peer_pk)
+    return receipt
   }
 
-  async sub (config : SubFilter) : Promise<SubResponse> {
-    const conf      = { ...SUB_CONFIG(), ...config }
-    const has_peers = conf.peers.length > 0
-    return new Promise(resolve => {
-      const { id, peers, tag, strict, timeout } = conf
-
-      const authors : Set<string>       = new Set()
-      const inbox   : Set<EventMessage> = new Set()
-
-      const resolver = () => {
-        if (has_peers && strict) {
-          const blame = peers.filter(e => !authors.has(e))
-          resolve({ ok : false, blame, err : 'timeout' })
-        } else {
-          resolve({ ok : true, inbox: [ ...inbox ] })
-        }
-      }
-
-      const timer = setTimeout(resolver, timeout)
-
-      const handler = (event : EventMessage) => {
-        authors.add(event.ctx.pubkey)
-        inbox.add(event)
-        if (has_peers && peers.every(e => authors.has(e))) {
-          clearTimeout(timer)
-          resolve({ ok: true, inbox: [ ...inbox ] })
-        }
-      }
-
-      if (typeof id === 'string') {
-        this.inbox.within(id, (event) => handler(event), timeout)
-      }
-
-      if (typeof tag === 'string') {
-        this.rpc.within(tag, (event) => handler(event), timeout)
-      }
+  /**
+   * Sends a message and collects responses from multiple peers.
+   * @param message  Message template to send
+   * @param peers    Array of peer pubkeys to request from
+   * @param timeout  Maximum wait time in ms
+   * @returns        Combined broadcast and subscription status
+   */
+  async multicast (
+    message : MessageTemplate,
+    peers   : string[],
+    timeout : number = this.config.req_timeout
+  ) : Promise<MulticastResponse> {
+    const msg = finalize_message(message)
+    const sub = this.subscribe({ id : msg.id, peers }, { timeout })
+    const pub = this.broadcast(msg, peers)
+    return Promise.all([ sub, pub ]).then(([ sub, pub ]) => {
+      return { sub, pub }
     })
   }
+
+  /**
+   * Publishes a single message to a specific peer.
+   * @param message  Message template to send
+   * @param pubkey   Recipient's public key
+   * @returns        Publication status
+   */
+  async publish (
+    message : MessageTemplate,
+    pubkey  : string,
+  ) : Promise<PubResponse> {
+    const msg = finalize_message(message)
+    return this._publish(msg, pubkey)
+  }
+
+  /**
+   * Creates a subscription for incoming messages.
+   * @param filter   Criteria for filtering messages
+   * @param options  Subscription configuration
+   * @returns        Collected messages and status
+   */
+  async subscribe (
+    filter  : SubFilter,
+    options : Partial<SubConfig> = {}
+  ) : Promise<SubResponse> {
+    const config = get_sub_config(options)
+    return new Promise(resolve => {
+      const { timeout, threshold }  = config
+      const { id, peers = [], tag } = filter
+
+      const authors : Set<string>        = new Set()
+      const inbox   : Set<SignedMessage> = new Set()
+      const timer   = setTimeout(() => resolver(false, 'timeout'), timeout)
+
+      const resolver = (ok : boolean, reason : ResolveReason) => {
+        clearTimeout(timer)
+        const res = {
+          ok,
+          authors : Array.from(authors),
+          inbox   : Array.from(inbox),
+          peers,
+          reason 
+        }
+        this.emit('resolved', res)
+        resolve({ ...res })
+      }
+
+      const is_bounce = (msg : SignedMessage) => (
+        (typeof id  === 'string' && id  !== msg.id)  ||
+        (typeof tag === 'string' && tag !== msg.tag) ||
+        (peers.length > 0 && !peers.includes(msg.env.pubkey))
+      )
+
+      this.within('message', (msg) => {
+        if (!is_bounce(msg)) {
+          authors.add(msg.env.pubkey)
+          inbox.add(msg)
+        }
+        if (typeof threshold === 'number' && authors.size >= threshold) {
+          resolver(true, 'threshold')
+        }
+        if (peers.length > 0 && peers.every(e => authors.has(e))) {
+          resolver(true, 'complete')
+        }
+      }, timeout)
+    })
+  }
+}
+
+/**
+ * Ensures a message template has a valid ID.
+ * @param template  Message template to finalize
+ * @returns         Completed message data
+ */
+function finalize_message (template : MessageTemplate) : MessageData {
+  const id = template.id ?? gen_message_id()
+  return { ...template, id }
+}
+
+/**
+ * Merges provided options with default node configuration.
+ * @param opt      Custom configuration options
+ * @returns        Complete node configuration
+ */
+function get_node_config (opt ?: Partial<NodeConfig>) {
+  return { ...NODE_CONFIG(), ...opt }
+}
+
+/**
+ * Combines custom filter settings with defaults.
+ * @param filter   Custom filter settings
+ * @returns        Complete filter configuration
+ */
+function get_filter_config (filter ?: Partial<EventFilter>) {
+  return { ...FILTER_CONFIG(), ...filter }
+}
+
+/**
+ * Merges subscription options with defaults.
+ * @param config   Custom subscription options
+ * @returns        Complete subscription configuration
+ */
+function get_sub_config (config : Partial<SubConfig>) {
+  return { ...CONFIG.DEFAULT_SUB_CONFIG(), ...config }
 }

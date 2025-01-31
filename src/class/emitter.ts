@@ -1,101 +1,140 @@
-export class EventEmitter <T extends Record<string, any> = {}> {
-  readonly _events : Map<keyof T, Set<Function>>
+/**
+ * Type-safe event emitter that handles synchronous and asynchronous event subscriptions.
+ * Provides a robust event system with support for one-time events, timeouts, and wildcard handlers.
+ * @template T Record of event names mapped to their payload types
+ */
+export default class EventEmitter<T extends Record<string, any> = {}> {
+  private readonly eventMap: Map<keyof T | '*', Set<Function>>;
 
-  constructor () {
-    this._events = new Map()
+  constructor() {
+    this.eventMap = new Map();
   }
 
-  _get_methods (event : string) : Set<Function> {
-    /** 
-     * If key undefined, create a new set for the event,
-     * else return the stored subscriber list.
-     */
-    const label  = String(event)
-      let events = this._events.get(label)
-
-    if (events === undefined) {
-      events = new Set()
-      this._events.set(label, events)
+  /**
+   * Gets or creates a Set of event handlers for the given event.
+   * @private
+   * @param eventName  Name of the event to get handlers for
+   * @returns          Set of handler functions for the event
+   */
+  private getEventHandlers(eventName: string): Set<Function> {
+    const handlers = this.eventMap.get(eventName);
+    if (!handlers) {
+      const newHandlers = new Set<Function>();
+      this.eventMap.set(eventName, newHandlers);
+      return newHandlers;
     }
-
-    return events
+    return handlers;
   }
 
-  has <K extends keyof T> (topic : K) : boolean {
-    const res = this._events.get(topic)
-    return (res instanceof Set && res.size > 0)
+  /**
+   * Checks if an event has any active subscribers.
+   * @param eventName  Name of the event to check
+   * @returns         True if the event has subscribers, false otherwise
+   */
+  public has<K extends keyof T>(eventName: K): boolean {
+    const handlers = this.eventMap.get(eventName);
+    return handlers !== undefined && handlers.size > 0;
   }
 
-  on <K extends string & keyof T> (
-    event  : K, 
-    method : (args : T[K]) => void | Promise<void>
-  ) : void {
-    /** 
-     * Subscribe function to run on a given event.
-     */
-    this._get_methods(event).add(method)
+  /**
+   * Subscribes a handler function to an event.
+   * @param eventName  Name of the event to subscribe to
+   * @param handler    Function to be called when event is emitted
+   * @emits message   When the subscribed event is emitted
+   */
+  public on<K extends keyof T>(
+    eventName: K,
+    handler: (payload: T[K]) => void | Promise<void>
+  ): void {
+    this.getEventHandlers(eventName as string).add(handler);
   }
 
-  once <K extends string & keyof T> (
-    event  : K,
-    method : (args : T[K]) => void | Promise<void>
-  ) : void {
-    /** 
-     * Subscribe function to run once, using
-     * a callback to cancel the subscription.
-     */
-    const onceFn = (args : T[K]) : void => {
-      this.remove(event, onceFn)
-      void method.apply(this, [ args ])
-    }
-
-    this.on(event, onceFn)
+  /**
+   * Subscribes a one-time handler that automatically unsubscribes after first execution.
+   * @param eventName  Name of the event to subscribe to
+   * @param handler    Function to be called once when event is emitted
+   * @emits message   When the subscribed event is emitted (only once)
+   */
+  public once<K extends keyof T>(
+    eventName: K,
+    handler: (payload: T[K]) => void | Promise<void>
+  ): void {
+    const oneTimeHandler = (payload: T[K]): void => {
+      this.off(eventName as string, oneTimeHandler);
+      void handler(payload);
+    };
+    this.on(eventName, oneTimeHandler);
   }
 
-  within <K extends string & keyof T> (
-    event   : K,
-    method  : (args : T[K]) => void | Promise<void>,
-    timeout : number
-  ) : void {
-    /** Subscribe function to run within a given,
-     *  amount of time, then cancel the subscription.
-     * */
-    const withinFn = (args : T[K]) : void => {
-      void method.apply(this, [ args ])
-    }
-    setTimeout(() => { this.remove(event, withinFn) }, timeout)
+  /**
+   * Subscribes a handler that automatically unsubscribes after a specified timeout.
+   * @param eventName  Name of the event to subscribe to
+   * @param handler    Function to be called when event is emitted
+   * @param timeoutMs  Time in milliseconds after which the handler is unsubscribed
+   * @emits message   When the subscribed event is emitted (within timeout period)
+   */
+  public within<K extends keyof T>(
+    eventName: K,
+    handler: (payload: T[K]) => void | Promise<void>,
+    timeoutMs: number
+  ): void {
+    const timeoutHandler = (payload: T[K]): void => {
+      void handler(payload);
+    };
 
-    this.on(event, withinFn)
+    setTimeout(() => {
+      this.off(eventName as string, timeoutHandler);
+    }, timeoutMs);
+
+    this.on(eventName, timeoutHandler);
   }
 
-  emit <K extends string & keyof T> (
-    event : K,
-    args  : T[K]
-  ) : void {
-    /** Emit a series of arguments for the event, and
-     *  present them to each subscriber in the list.
-     * */
-    const methods : Function[] = []
-    this._get_methods(event).forEach(fn => {
-      methods.push(fn.apply(this, [ args ]))
-    })
+  /**
+   * Emits an event with the given payload to all subscribers.
+   * Handles both synchronous and asynchronous event handlers.
+   * @param eventName  Name of the event to emit
+   * @param payload    Data to be passed to event handlers
+   * @emits *         Also triggers wildcard handlers with event name and payload
+   */
+  public emit<K extends keyof T>(eventName: K, payload: T[K]): void {
+    const promises: Promise<any>[] = [];
 
-    this._get_methods('*').forEach(fn => {
-      methods.push(fn.apply(this, [ event, args ]))
-    })
+    // Call specific event handlers
+    this.getEventHandlers(eventName as string).forEach(handler => {
+      const result = handler(payload);
+      if (result instanceof Promise) {
+        promises.push(result);
+      }
+    });
 
-    void Promise.allSettled(methods)
+    // Call wildcard handlers
+    this.getEventHandlers('*').forEach(handler => {
+      const result = handler(eventName, payload);
+      if (result instanceof Promise) {
+        promises.push(result);
+      }
+    });
+
+    void Promise.allSettled(promises);
   }
 
-  remove <K extends keyof T> (
-    event  : string,
-    method : (args : T[K]) => void | Promise<void>
-  ) : void {
-    /** Remove function from an event's subscribtion list. */
-    this._get_methods(event).delete(method)
+  /**
+   * Removes a specific handler from an event's subscriber list.
+   * @param eventName  Name of the event to unsubscribe from
+   * @param handler    Handler function to remove
+   */
+  public off<K extends keyof T>(
+    eventName: string,
+    handler: (payload: T[K]) => void | Promise<void>
+  ): void {
+    this.getEventHandlers(eventName).delete(handler);
   }
 
-  clear (event : string) : void {
-    this._events.delete(event)
+  /**
+   * Removes all handlers for a specific event.
+   * @param eventName  Name of the event to clear handlers for
+   */
+  public clear(eventName: string): void {
+    this.eventMap.delete(eventName);
   }
 }

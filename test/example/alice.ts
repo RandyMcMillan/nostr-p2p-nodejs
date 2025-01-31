@@ -25,23 +25,23 @@ console.log('alice pk:', alice_pk)
 const node = new NostrNode(RELAYS, alice_sk)
 const mid  = gen_message_id()
 
-node.event.on('info',   (args) => console.log('info:', args))
-node.event.on('error',  (args) => console.log('error:', args))
-node.event.on('filter', (args) => console.log('filter:', args))
+node.on('info',   (args) => console.log('info:', args))
+node.on('error',  (args) => console.log('error:', args))
+node.on('filter', (args) => console.log('filter:', args))
 
-node.inbox.on(mid, msg => {
-  console.log('alice received msg:', msg.id, msg.dat)
+node.inbox.id.on(mid, msg => {
+  console.log('alice received msg:', msg.id, msg.data)
 })
 
-node.rpc.on('pong', msg => {
-  console.log('alice received rpc:', msg.tag, msg.dat)
+node.inbox.tag.on('pong', msg => {
+  console.log('alice received rpc:', msg.tag, msg.data)
 })
 
-node.event.on('init', async () => {
+node.on('ready', async () => {
   console.log('connected')
   console.log('sending message ...')
 
-  const res = await node.req('ping', 'ping!', PEERS, { strict: false })
+  const res = await node.collect({ tag: 'ping' })
 
   console.log('events:', res)
 })
