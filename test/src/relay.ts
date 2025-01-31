@@ -244,7 +244,7 @@ class ClientSession {
     for (const { filters, instance, sub_id } of this.relay.subs.values()) {
       for (const filter of filters) {
         if (match_filter(event, filter)) {
-          instance.log.client(`event matched subscription: ${event.id} => ${sub_id}`)
+          instance.log.client(`event matched subscription: ${sub_id}`)
           instance.send(['EVENT', sub_id, event])
         }
       }
@@ -271,7 +271,8 @@ class ClientSession {
           if (match_filter(event, filter)) {
             // Send the event to the client.
             this.send(['EVENT', sub_id, event])
-            this.log.client(`event matched subscription: ${event.id} => ${sub_id}`)
+            this.log.client(`event matched in cache: ${event.id}`)
+            this.log.client(`event matched subscription: ${sub_id}`)
           }
           // Update the limit count.
           if (limit_count !== undefined) limit_count -= 1
