@@ -12,9 +12,7 @@ import type {
 } from './res.js'
 
 export interface NodeConfig {
-  debug        : false
   filter      ?: Partial<EventFilter>
-  peers       ?: string[]
   req_timeout  : number
   since_offset : number
   start_delay  : number
@@ -34,11 +32,12 @@ export interface NodeMessageEventMap {
 }
 
 export interface NodeEventMap extends Record<string, any> {
-  'bounced'  : [ event_id : string, error : string ]
-  'closed'   : NostrNode
-  'debug'    : unknown
-  'error'    : unknown
-  'info'     : Json
-  'message'  : SignedMessage
-  'ready'    : NostrNode
+  'bounced'    : [ event_id : string, error : string ]
+  'closed'     : NostrNode
+  'debug'      : unknown
+  'error'      : unknown
+  'info'       : Json
+  'message'    : SignedMessage
+  'ready'      : NostrNode
+  'subscribed' : [ sub_id : string, filter : EventFilter ]
 }

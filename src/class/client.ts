@@ -58,7 +58,6 @@ const FILTER_CONFIG = () => {
  */
 const NODE_CONFIG = () => {
   return {
-    debug        : false as const,
     req_timeout  : 5000,
     since_offset : 5,
     start_delay  : 2000
@@ -72,7 +71,6 @@ const NODE_CONFIG = () => {
 export default class NostrNode extends EventEmitter <NodeEventMap> {
   // Core node components
   private readonly _conf     : NodeConfig
-  private readonly _filter   : EventFilter
   private readonly _pool     : SimplePool    // Manages relay connections
   private readonly _pubkey   : string
   private readonly _relays   : string[]
@@ -86,7 +84,8 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
     tag   : new EventEmitter()   // Route by message tag
   }
   
-  private _sub : SubCloser | null = null  // Active relay subscription
+  private _filter : EventFilter
+  private _sub    : SubCloser | null = null  // Active relay subscription
 
   /**
    * Creates a new NostrNode instance.
@@ -114,10 +113,38 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
     this._pool   = new SimplePool()
     this._relays = relays
 
-    // Add our pubkey to the filter to receive direct messages
-    this.filter['#p'] = [...this.filter['#p'] ?? [], this.pubkey]
+    
 
     this.emit('info', [ 'filter:', JSON.stringify(this.filter, null, 2) ])
+  }
+
+  /**
+   * Subscribes to the filter.
+   * @param filter  The filter to subscribe to.
+   * @param timeout The timeout for the subscription.
+   * @returns       Returns the reason for failure, or null if successful.
+   */
+  private _subscribe (
+    filter  : EventFilter,
+    timeout : number = this.config.req_timeout
+  ) : Promise<string | null> {
+    const sub_id = gen_message_id()
+    this._filter = get_filter_config(filter)
+    // Add our pubkey to the filter to receive direct messages
+    this.filter['#p'] = [ ...this.filter['#p'] ?? [], this.pubkey ]
+    // Subscribe to the filter.
+    this._sub = this._pool.subscribeMany(this.relays, [ this._filter ], {
+      id      : sub_id,
+      oneose  : () => this.emit('subscribed', [ sub_id, this.filter ]),
+      onevent : this._handler
+    })
+    return new Promise(resolve => {
+      const timer    = setTimeout(()  => resolve('timeout'), timeout)
+      const resolver = (reason : string | null) => { clearTimeout(timer); resolve(reason) }
+      this.within('subscribed', ([ id ]) => {
+        if (id === sub_id) resolver(null)
+      }, timeout)
+    })
   }
 
   /**
@@ -196,6 +223,13 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
     return this._relays
   }
 
+  set filter (filter : EventFilter) {
+    if (this._sub !== null) {
+      this._sub.close()
+    }
+    this._subscribe(filter)
+  }
+
   /**
    * Broadcasts a message to multiple peers simultaneously.
    * @param message  Message template to broadcast
@@ -229,11 +263,12 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
    * @returns      This node instance
    * @emits ready  When connections are established
    */
-  async connect () : Promise<this> {
-    // Start listening for events on all relays
-    this._sub = this._pool.subscribeMany(this.relays, [ this._filter ], {
-      onevent : this._handler
-    })
+  async connect (
+    timeout : number = this.config.req_timeout
+  ) : Promise<this> {
+    // Start listening for events on all relays.
+    const res = await this._subscribe(this._filter, timeout)
+    if (res !== null) throw new Error(res)
     this.emit('ready', this)
     return this
   }
