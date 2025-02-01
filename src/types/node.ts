@@ -13,7 +13,7 @@ import type {
 } from './res.js'
 
 export interface NodeOptions {
-  event        ?: Partial<EventConfig>
+  envelope     ?: Partial<EventConfig>
   filter       ?: Partial<EventFilter>
   req_timeout  ?: number
   since_offset ?: number
@@ -21,14 +21,14 @@ export interface NodeOptions {
 }
 
 export interface NodeConfig {
-  event        : EventConfig
+  envelope     : EventConfig
   filter       : EventFilter
   req_timeout  : number
   since_offset : number
   start_delay  : number
 }
 
-export interface RequestOptions extends Partial<EventConfig> {
+export interface DeliveryOptions extends Partial<EventConfig> {
   cache?   : Map<string, PubResponse>
   timeout? : number
 }

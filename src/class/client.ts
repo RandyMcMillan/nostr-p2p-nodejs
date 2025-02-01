@@ -37,7 +37,7 @@ import type {
   MulticastResponse,
   EventConfig,
   NodeOptions,
-  RequestOptions
+  DeliveryOptions
 } from '../types/index.js'
 
 import * as Util from '../util/index.js'
@@ -49,7 +49,7 @@ import 'websocket-polyfill'
  */
 const NODE_CONFIG : () => NodeConfig = () => {
   return {
-    event: {
+    envelope: {
       kind : 20004,
       tags : [] as string[][]
     },
@@ -147,7 +147,7 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
   private _publish = async (
     message  : MessageData,
     peer_pk  : string,
-    options? : RequestOptions
+    options? : DeliveryOptions
   ) : Promise<PubResponse & MessageIdResponse> => {  
     // Create and sign the message envelope
     const cache    = options?.cache ?? new Map<string, PubResponse>()
@@ -233,7 +233,7 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
   async broadcast (
     message  : MessageTemplate,
     peers    : string[],
-    options? : RequestOptions
+    options? : DeliveryOptions
   ) : Promise<BroadcastResponse> {
     const cache  = new Map<string, PubResponse>()
     const msg    = finalize_message(message)
@@ -292,7 +292,7 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
   async request (
     message : MessageTemplate,
     peer_pk : string,
-    options : RequestOptions
+    options : DeliveryOptions
   ) : Promise<SubResponse> {
     // Finalize message.
     const msg = finalize_message(message)
@@ -314,7 +314,7 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
   async multicast (
     message : MessageTemplate,
     peers   : string[],
-    options : Partial<RequestOptions> = {}
+    options : Partial<DeliveryOptions> = {}
   ) : Promise<MulticastResponse> {
     const msg = finalize_message(message)
     const sub = this.subscribe({ id : msg.id, peers }, options)
@@ -422,9 +422,9 @@ function get_node_config (
   opt : NodeOptions = {}
 ) : NodeConfig {
   const config = NODE_CONFIG()
-  const event  = { ...config.event,  ...opt.event  }
+  const envelope  = { ...config.envelope,  ...opt.envelope  }
   const filter = { ...config.filter, ...opt.filter }
-  return { ...config, event, filter }
+  return { ...config, envelope, filter }
 }
 
 /**
@@ -438,9 +438,9 @@ function get_event_config (
   opt  : Partial<EventConfig> = {}
 ) : EventConfig {
   let { created_at = Util.now(), tags = [], ...rest } = opt
-  const event = node.config.event
-  tags = [ ...event.tags ?? [], ...opt.tags ?? [] ]
-  return { ...event, ...rest, created_at, tags }
+  const envelope = node.config.envelope
+  tags = [ ...envelope.tags ?? [], ...opt.tags ?? [] ]
+  return { ...envelope, ...rest, created_at, tags }
 }
 
 /**

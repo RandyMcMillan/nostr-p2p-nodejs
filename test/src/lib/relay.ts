@@ -6,7 +6,7 @@ import { WebSocket, WebSocketServer } from 'ws'
 
 /* ================ [ Configuration ] ================ */
 
-const DEBUG   = true //process.env['DEBUG']   === 'true'
+const DEBUG   = process.env['DEBUG']   === 'true'
 const VERBOSE = process.env['VERBOSE'] === 'true' || DEBUG
 
 console.log('output mode:', DEBUG ? 'debug' : VERBOSE ? 'verbose' : 'silent')

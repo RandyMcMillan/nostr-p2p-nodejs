@@ -78,14 +78,6 @@ Create a basic Nostr node and connect it to a relay:
 
 ```typescript
 import { NostrNode } from '@cmdcode/nostr-p2p'
-import { now }       from '@cmdcode/nostr-p2p/utils'
-
-const options = {
-  filter : {
-    kinds: [ 20004 ],  // Default event kind for p2p messages.
-    since: now()       // Only get events from now onwards.
-  }
-}
 
 // List of relays to connect to.
 const relays = [
@@ -94,7 +86,8 @@ const relays = [
 ]
 
 // Create a new Nostr node.
-const node = new NostrNode(relays, seckey, options)
+const seckey = '...' // Your private key.
+const node   = new NostrNode(relays, seckey)
 
 node.on('ready', () => {
   // Fires when the node is ready to send and receive messages.
@@ -105,9 +98,21 @@ node.on('ready', () => {
 await node.connect()
 ```
 
+You can configure the node with additional options:
+
+```ts
+interface NodeOptions {
+  envelope     ?: Partial<EventConfig>  // Event envelope configuration. 
+  filter       ?: Partial<EventFilter>  // Event filter configuration.
+  req_timeout  ?: number                // Request timeout.
+  since_offset ?: number                // Time offset for filtering events.
+  start_delay  ?: number                // Delay before starting to listen for events.
+}
+```
+
 ### Message Structure
 
-Messages are structured in a basic format, with a message `id`, a topic `tag`, and a `data` payload.
+Messages are structured in a basic format, with a message `id`, a topic `tag`, and a `data` payload:
 
 ```ts
 interface MessageTemplate {
@@ -117,7 +122,18 @@ interface MessageTemplate {
 }
 ```
 
-Delivered messages also include the original nostr event, stored as `env` (short for envelope).
+When sending a message, you can specify additional options for the delivery:
+
+```ts
+interface DeliveryOptions {
+  cache?   : Map<string, PubResponse>  // Cache for tracking publishing status.
+  kind?    : number                    // The kind of event to publish.
+  tags?    : string[][]                // Additional tags to include in the event.
+  timeout? : number                    // The timeout for the delivery response (if any).
+}
+```
+
+Delivered messages also include the original nostr event, stored as `env` (short for envelope):
 
 ```ts
 interface SignedMessage {
@@ -138,8 +154,9 @@ The `publish` method encrypts and sends a message to a single peer:
 
 ```ts
 const res : Promise<PubResponse> = node.publish(
-  message : MessageTemplate,
-  peer_pk : string
+  message  : MessageTemplate,
+  peer_pk  : string,
+  options? : Partial<DeliveryOptions>
 )
 ```
 
@@ -160,8 +177,9 @@ The `broadcast` method sends a message to multiple peers:
 
 ```ts
 const res : Promise<BroadcastResponse> = node.broadcast(
-  message : MessageTemplate,
-  peers   : string[]
+  message  : MessageTemplate,
+  peers    : string[],
+  options? : Partial<DeliveryOptions>
 )
 ```
 
@@ -183,9 +201,9 @@ The `request` method is useful when you expect a response from the peer:
 
 ```ts
 const res : Promise<ReqResponse> = node.request(
-  message : MessageTemplate,
-  peer_pk : string,
-  timeout : number
+  message  : MessageTemplate,
+  peer_pk  : string,
+  options? : Partial<DeliveryOptions>
 )
 ```
 
@@ -204,9 +222,9 @@ The `multicast` method is useful when you expect a response from multiple peers:
 
 ```ts
 const res : Promise<MulticastResponse> = node.multicast(
-  message : MessageTemplate,
-  peers   : string[],
-  timeout : number
+  message  : MessageTemplate,
+  peers    : string[],
+  options? : Partial<DeliveryOptions>
 )
 ```
 
