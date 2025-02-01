@@ -1,5 +1,7 @@
-import { parse_error } from '@/util/helpers.js'
-import { TestContext } from '../types.js'
+import { parse_error }         from '@/util/helpers.js'
+import { get_node, get_peers } from '../lib/node.js'
+
+import type { TestContext } from '../types.js'
 
 const TIMEOUT = 5000  // 5 second timeout
 
@@ -10,9 +12,10 @@ const TIMEOUT = 5000  // 5 second timeout
  * @param ctx - Test context containing nodes and tape instance
  */
 export default function (ctx : TestContext) {
-  const { nodes, peers, tape } = ctx
+  const { nodes, tape } = ctx
 
-  const Alice  = nodes[0]
+  const Alice = get_node(nodes, 'alice')
+  const peers = get_peers(nodes, 'alice')
 
   tape.test('multicast test', async t => {
     try {

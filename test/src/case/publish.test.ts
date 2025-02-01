@@ -1,5 +1,7 @@
 import { parse_error } from '@/util/helpers.js'
-import { TestContext } from '../types.js'
+import { get_node }    from '../lib/node.js'
+
+import type { TestContext } from '../types.js'
 
 const TIMEOUT = 5000  // 5 second timeout
 
@@ -12,8 +14,8 @@ const TIMEOUT = 5000  // 5 second timeout
 export default function (ctx : TestContext) {
   const { nodes, tape } = ctx
 
-  const Alice = nodes[0]
-  const Bob   = nodes[1]
+  const Alice = get_node(nodes, 'alice')
+  const Bob   = get_node(nodes, 'bob')
 
   tape.test('publish test', async t => {
     try {
