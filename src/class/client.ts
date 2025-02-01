@@ -238,10 +238,8 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
 
     return Promise.all(outbox).then(settled => {
       // Collect success/failure stats
-      const ok    = settled.every(r => r.ok)
-      const acks  = settled.filter(r => r.ok).map(r => r.peer_pk)
-      const fails = settled.filter(r => !r.ok).map(r => r.peer_pk)
-      const res   = { ok, acks, cache, fails, msg_id : msg.id, peers }
+      const ok  = settled.every(r => r.ok)
+      const res = { ok, cache, msg_id : msg.id, peers }
 
       settled.forEach(r => cache.set(r.peer_pk, r))
       this.emit('broadcast', res)

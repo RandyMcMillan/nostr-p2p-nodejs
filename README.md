@@ -95,6 +95,12 @@ const relays = [
 
 // Create a new Nostr node.
 const node = new NostrNode(relays, seckey, options)
+
+node.on('ready', () => {
+  // Fires when the node is ready to send and receive messages.
+  console.log('connected to:', node.relays)
+})
+
 // Connect to the relays.
 await node.connect()
 ```
@@ -137,7 +143,16 @@ const res : Promise<PubResponse> = node.publish(
 )
 ```
 
-The message is end-to-end encrypted using the recipient's public key, so only the intended recipient can decrypt the message.
+The `PubResponse` object includes the following properties:
+
+```ts
+interface PubResponse {
+  acks    : string[]  // List of relays that acknowledged the message.
+  fails   : string[]  // List of relays that failed to respond.
+  ok      : boolean   // True if at least one relay acknowledged.
+  peer_pk : string    // The public key of the recipient peer.
+}
+```
 
 #### Broadcasts
 
@@ -152,19 +167,36 @@ const res : Promise<BroadcastResponse> = node.broadcast(
 
 All messages share the same message `id` and `tag`, but each recipient receives their own encrypted copy.
 
+The `BroadcastResponse` object includes the following properties:
+
+```ts
+interface BroadcastResponse {
+  cache  : Map<string, PubResponse>  // Map of each peer pubkey to their PubResponse.
+  ok     : boolean                   // True if all responses were successful.
+  peers  : string[]                  // List of peers that received the message.
+}
+```
+
 #### Request and Response
 
 The `request` method is useful when you expect a response from the peer:
 
 ```ts
-const res : Promise<SubResponse> = node.request(
+const res : Promise<ReqResponse> = node.request(
   message : MessageTemplate,
   peer_pk : string,
   timeout : number
 )
 ```
 
-It automatically handles message correlation and will reject the promise if no response is received within the timeout period.
+The `ReqResponse` object includes the following properties:
+
+```ts
+interface ReqResponse {
+  pub : PubResponse  // The PubResponse from publishing to the relays.
+  sub : SubResponse  // The SubResponse from listening for the message id.
+}
+```
 
 #### Multi-Peer Requests
 
@@ -180,6 +212,15 @@ const res : Promise<MulticastResponse> = node.multicast(
 
 It sends a request to multiple peers and collects their responses, returning an array of all received responses within the timeout period.
 
+The `MulticastResponse` object includes the following properties:
+
+```ts
+interface MulticastResponse {
+  pub : BroadcastResponse  // The BroadcastResponse from publishing to the relays.
+  sub : SubResponse        // The SubResponse from listening for the message id.
+}
+```
+
 #### Custom Subscriptions
 
 The `subscribe` method allows you to implement a custom message listener with a timeout:
@@ -192,6 +233,20 @@ const sub : Promise<SubResponse> = node.subscribe (
 )
 ```
 This method is useful when you need to implement a custom message listener that is not covered by the other methods.
+
+The `SubResponse` object includes the following properties:
+
+```ts
+type ResolveReason = 'complete' | 'timeout' | 'threshold'
+
+interface SubResponse {
+  authors : string[]         // List of authors that published messages matching the filter.
+  inbox   : SignedMessage[]  // List of messages matching the filter. 
+  ok      : boolean          // True if at least one message was found.
+  peers   : string[]         // List of peers that published messages matching the filter.
+  reason  : ResolveReason    // The reason the subscription was resolved.
+}
+```
 
 ### Event Handling
 

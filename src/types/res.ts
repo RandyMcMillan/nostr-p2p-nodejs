@@ -7,9 +7,7 @@ export interface MessageIdResponse {
 }
 
 export interface BroadcastResponse {
-  acks   : string[]
   cache  : Map<string, PubResponse>
-  fails  : string[]
   ok     : boolean
   peers  : string[]
 }

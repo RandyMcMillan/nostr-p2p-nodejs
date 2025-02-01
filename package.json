@@ -41,7 +41,7 @@
     "load": "tsx --tsconfig ./test/tsconfig.json",
     "release": "npm run test && npm run build && npm publish",
     "scratch": "npm run load test/scratch.ts",
-    "test": " npm run load test/tape.ts | tap-spec"
+    "test": " npm run load test/tape.ts | faucet"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^28.0.1",
@@ -53,8 +53,8 @@
     "@types/node": "^22.10.5",
     "@types/tape": "^5.6.4",
     "@types/ws": "^8.5.13",
+    "faucet": "^0.0.4",
     "rollup": "^4.24.0",
-    "tap-spec": "^2.2.2",
     "tape": "^5.9.0",
     "tslib": "^2.8.0",
     "tsx": "^4.19.1",
