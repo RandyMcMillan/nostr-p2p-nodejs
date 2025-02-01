@@ -8,4 +8,3 @@ export interface SubConfig {
   threshold ?: number
   timeout   ?: number
 }
-
