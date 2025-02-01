@@ -226,6 +226,17 @@ interface MulticastResponse {
 The `subscribe` method allows you to implement a custom message listener with a timeout:
 
 ```ts
+interface SubFilter {
+  id    ?: string    // The message id to listen for.
+  peers ?: string[]  // The peers to listen for.
+  tag   ?: string    // The message tag to listen for.
+}
+
+interface SubConfig {
+  threshold ?: number  // The number of responses to collect.
+  timeout   ?: number  // The timeout for the subscription.
+}
+
 // Custom subscription
 const sub : Promise<SubResponse> = node.subscribe (
   filter  : EventFilter,
@@ -344,15 +355,7 @@ node.inbox.id.once('deadbeef', (msg) => {
 })
 ```
 Use `once` when you only need to handle the first occurrence of a message. The handler automatically unsubscribes after being triggered once.
-
-#### Request Configuration
-```ts
-const response = await node.multicast(message, peers, {
-  timeout: 5000,  // Maximum time to wait for responses.
-  threshold: 3    // Resolve after receiving 3 responses.
-})
 ```
-The multicast configuration allows you to fine-tune how responses are collected. The promise resolves either when the threshold is met or when the timeout is reached, whichever comes first.
 
 ## Development
 
