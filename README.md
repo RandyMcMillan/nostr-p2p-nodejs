@@ -303,23 +303,26 @@ node.inbox.event.on('settled', (res: PubResponse & MessageIdResponse) => {
 })
 ```
 
-These events provide real-time feedback on message delivery status:
-- `published ` : Emitted when a message is successfully published to the network
-- `broadcast ` : Emitted when a broadcast operation completes, including delivery status
-- `settled   ` : Emitted when a message delivery is fully settled (confirmed by relays)
-
 #### Node Events
 
 The node itself emits several events that provide comprehensive monitoring of its operation:
 
 ```ts
+// Listen for bounced events
 node.on('bounced',    (event_id: string, error: string) => console.log('Message bounced:', event_id, error))
+// Listen for when the node is closed.
 node.on('closed',     (node: NostrNode)    => console.log('Node closed:', node))
+// Listen for debug messages
 node.on('debug',      (info: unknown)      => console.log('Debug:', info))
+// Listen for errors.
 node.on('error',      (error: unknown)     => console.error('Node error:', error))
+// Listen for info messages.
 node.on('info',       (info: Json)         => console.log('Info:', info))
+// Listen for received messages.
 node.on('message',    (msg: SignedMessage) => console.log('Received message:', msg))
+// Listen for when the node is ready to send and receive messages.
 node.on('ready',      (node: NostrNode)    => console.log('Node is ready:', node))
+// Listen for new subscriptions to the relays.
 node.on('subscribed', (sub_id: string, filter: EventFilter) => console.log('New subscription:', sub_id, filter))
 ```
 
