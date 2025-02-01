@@ -2,8 +2,9 @@ import NostrNode    from '@/class/client.js'
 import EventEmitter from '@/class/emitter.js'
 
 import type { Json }          from './base.js'
-import type { EventFilter }   from './event.js'
 import type { SignedMessage } from './msg.js'
+
+import type { EventConfig, EventFilter } from './event.js'
 
 import type {
   MessageIdResponse,
@@ -11,11 +12,25 @@ import type {
   PubResponse
 } from './res.js'
 
+export interface NodeOptions {
+  event        ?: Partial<EventConfig>
+  filter       ?: Partial<EventFilter>
+  req_timeout  ?: number
+  since_offset ?: number
+  start_delay  ?: number
+}
+
 export interface NodeConfig {
-  filter      ?: Partial<EventFilter>
+  event        : EventConfig
+  filter       : EventFilter
   req_timeout  : number
   since_offset : number
   start_delay  : number
+}
+
+export interface RequestOptions extends Partial<EventConfig> {
+  cache?   : Map<string, PubResponse>
+  timeout? : number
 }
 
 export interface NodeMessageMap {
@@ -40,4 +55,15 @@ export interface NodeEventMap extends Record<string, any> {
   'message'    : SignedMessage
   'ready'      : NostrNode
   'subscribed' : [ sub_id : string, filter : EventFilter ]
+}
+
+export interface SubFilter {
+  id    ?: string
+  peers ?: string[]
+  tag   ?: string
+}
+
+export interface SubConfig {
+  threshold ?: number
+  timeout    : number
 }

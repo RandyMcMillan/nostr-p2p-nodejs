@@ -41,7 +41,7 @@
     "load": "tsx --tsconfig ./test/tsconfig.json",
     "release": "npm run test && npm run build && npm publish",
     "scratch": "npm run load test/scratch.ts",
-    "test": " npm run load test/tape.ts | faucet"
+    "test": " npm run load test/tape.ts"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^28.0.1",

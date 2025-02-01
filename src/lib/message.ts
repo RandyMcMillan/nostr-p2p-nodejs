@@ -13,38 +13,39 @@ import {
 } from './event.js'
 
 import type {
+  EventConfig,
   SignedEvent,
   SignedMessage
 } from '../types/index.js'
 
-import * as CONFIG from '../config.js'
 import * as CONST  from '../const.js'
+import * as Util   from '@/util/index.js'
 import Schema      from '../schema/index.js'
 
 /**
  * Creates a signed event envelope containing encrypted message content.
+ * @param config   Event configuration
  * @param content  String content to encrypt and send
  * @param peer_pk  Recipient's public key
  * @param seckey   Sender's secret key in hex format
  * @returns        Signed Nostr event containing the encrypted message
  */
 export function create_envelope (
-  content : string,
+  config  : EventConfig,
+  payload : string,
   peer_pk : string,
-  seckey  : string
+  seckey  : string,
 ) : SignedEvent {
+  // get created_at
+  const created_at = config.created_at ?? Util.now()
   // get pubkey
-  const pubkey    = get_pubkey(seckey)
+  const pubkey  = get_pubkey(seckey)
   // get shared secret
-  const secret    = get_shared_secret(seckey, peer_pk)
+  const secret  = get_shared_secret(seckey, peer_pk)
   // encrypt payload
-  const encrypted = encrypt_content(secret, content)
+  const content = encrypt_content(secret, payload)
   // Create an event template.
-  const event = {
-    ...CONFIG.DEFAULT_EVENT_CONFIG(),
-    pubkey,
-    content : encrypted,
-  }
+  const event   = { ...config, pubkey, content, created_at }
   // Add a tag for the peer's public key.
   event.tags.push([ 'p', peer_pk ])
   // Return the signed event.

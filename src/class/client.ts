@@ -1,9 +1,9 @@
 import EventEmitter from './emitter.js'
 
 import { Buff }           from '@cmdcode/buff'
+import { SimplePool }     from 'nostr-tools'
 import { get_pubkey }     from '../lib/crypto.js'
 import { gen_message_id } from '../lib/util.js'
-import { SimplePool }     from 'nostr-tools'
 import { SubCloser }      from 'nostr-tools/abstract-pool'
 
 import {
@@ -34,30 +34,29 @@ import type {
   SignedMessage,
   BroadcastResponse,
   MessageIdResponse,
-  MulticastResponse
+  MulticastResponse,
+  EventConfig,
+  NodeOptions,
+  RequestOptions
 } from '../types/index.js'
 
-import * as CONFIG from '../config.js'
-import * as Util   from '../util/index.js'
+import * as Util from '../util/index.js'
 
 import 'websocket-polyfill'
 
 /**
- * Default filter configuration for Nostr events.
- * Sets up basic event filtering for kind 20004 events.
- */
-const FILTER_CONFIG = () => {
-  return {
-    kinds : [ 20004 ],    // Filter for specific Nostr event type
-    since : Util.now()    // Only get events from current time onwards
-  }
-}
-
-/**
  * Default configuration settings for a Nostr node.
  */
-const NODE_CONFIG = () => {
+const NODE_CONFIG : () => NodeConfig = () => {
   return {
+    event: {
+      kind : 20004,
+      tags : [] as string[][]
+    },
+    filter: {
+      kinds : [ 20004 ],  // Filter for specific Nostr event type
+      since : Util.now()  // Only get events from current time onwards
+    },
     req_timeout  : 5000,
     since_offset : 5,
     start_delay  : 2000
@@ -70,7 +69,7 @@ const NODE_CONFIG = () => {
  */
 export default class NostrNode extends EventEmitter <NodeEventMap> {
   // Core node components
-  private readonly _conf     : NodeConfig
+  private readonly _config   : NodeConfig
   private readonly _pool     : SimplePool    // Manages relay connections
   private readonly _pubkey   : string
   private readonly _relays   : string[]
@@ -108,8 +107,8 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
     this._seckey = new Buff(seckey)
     this._pubkey = get_pubkey(this._seckey.hex)
   
-    this._conf   = get_node_config(options)
-    this._filter = get_filter_config(options.filter)
+    this._config = get_node_config(options)
+    this._filter = get_filter_config(this, options.filter)
     this._pool   = new SimplePool()
     this._relays = relays
 
@@ -142,17 +141,19 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
    * Internal method to publish messages to the Nostr network.
    * @param message  Message data to publish
    * @param peer_pk  Target peer's public key
-   * @param cache    Optional cache for tracking message status
+   * @param options  Optional configuration options
    * @returns        Publication status and message ID
    */
   private _publish = async (
-    message : MessageData,
-    peer_pk : string,
-    cache?  : Map<string, PubResponse>
+    message  : MessageData,
+    peer_pk  : string,
+    options? : RequestOptions
   ) : Promise<PubResponse & MessageIdResponse> => {  
     // Create and sign the message envelope
+    const cache    = options?.cache ?? new Map<string, PubResponse>()
+    const config   = get_event_config(this, options)
     const payload  = create_payload(message.tag, message.data, message.id)
-    const event    = create_envelope(payload, peer_pk, this._seckey.hex)
+    const event    = create_envelope(config, payload, peer_pk, this._seckey.hex)
     const signed   = { ...message, env : event }
 
     // Publish to all connected relays
@@ -166,7 +167,7 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
       const ok     = acks.length > 0
       const res    = { acks, fails, ok, peer_pk }
 
-      if (cache !== undefined) cache.set(peer_pk, res)
+      cache.set(peer_pk, res)
       this._inbox.event.emit('settled', { ...res, msg_id })
       return { ...res, ok, msg_id }
     })
@@ -176,6 +177,7 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
    * Subscribes to the filter.
    * @param filter  The filter to subscribe to.
    * @param timeout The timeout for the subscription.
+   * @param sub_id  The ID for the subscription.
    * @returns       Returns the reason for failure, or null if successful.
    */
   private _subscribe (
@@ -183,7 +185,7 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
     timeout : number = this.config.req_timeout,
     sub_id  : string = gen_message_id()
   ) : Promise<string | null> {
-    this._filter = get_filter_config(filter)
+    this._filter = get_filter_config(this,filter)
     // Add our pubkey to the filter to receive direct messages
     this.filter['#p'] = [ ...this.filter['#p'] ?? [], this.pubkey ]
     // Subscribe to the filter.
@@ -202,7 +204,7 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
   }
 
   get config() : NodeConfig {
-    return this._conf
+    return this._config
   }
 
   get filter() : EventFilter {
@@ -225,16 +227,18 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
    * Broadcasts a message to multiple peers simultaneously.
    * @param message  Message template to broadcast
    * @param peers    Array of peer pubkeys to send to
+   * @param options  Optional configuration options
    * @returns        Broadcast status including acks and failures
    */
   async broadcast (
-    message : MessageTemplate,
-    peers   : string[],
+    message  : MessageTemplate,
+    peers    : string[],
+    options? : RequestOptions
   ) : Promise<BroadcastResponse> {
     const cache  = new Map<string, PubResponse>()
     const msg    = finalize_message(message)
     // Send to all peers in parallel
-    const outbox = peers.map(pk => this.publish(msg, pk))
+    const outbox = peers.map(pk => this._publish(msg, pk, options))
 
     return Promise.all(outbox).then(settled => {
       // Collect success/failure stats
@@ -249,8 +253,9 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
 
   /**
    * Establishes connections to configured relays.
-   * @returns      This node instance
-   * @emits ready  When connections are established
+   * @param timeout  The timeout for the connection.
+   * @returns        This node instance
+   * @emits ready    When connections are established
    */
   async connect (
     timeout : number = this.config.req_timeout
@@ -264,6 +269,7 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
 
   /**
    * Gracefully closes all relay connections.
+   * 
    * @emits close  When all connections are terminated
    */
   async close () : Promise<void> {
@@ -280,18 +286,21 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
    * Sends a request to a single peer and awaits response.
    * @param message  Message template to send
    * @param peer_pk  Target peer's public key
-   * @param timeout  Maximum wait time in ms
+   * @param options  Optional configuration options
    * @returns        Subscription response
    */
   async request (
     message : MessageTemplate,
     peer_pk : string,
-    timeout : number = this.config.req_timeout
+    options : RequestOptions
   ) : Promise<SubResponse> {
+    // Finalize message.
     const msg = finalize_message(message)
     // Set up listener before sending message
-    const receipt = this.subscribe({ id : msg.id, peers : [ peer_pk ] }, { timeout })
-    this.publish(msg, peer_pk)
+    const receipt = this.subscribe({ id : msg.id, peers : [ peer_pk ] }, options)
+    // Send message.
+    this.publish(msg, peer_pk, options)
+    // Return receipt.
     return receipt
   }
 
@@ -299,17 +308,17 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
    * Sends a message and collects responses from multiple peers.
    * @param message  Message template to send
    * @param peers    Array of peer pubkeys to request from
-   * @param timeout  Maximum wait time in ms
+   * @param options  Optional configuration options
    * @returns        Combined broadcast and subscription status
    */
   async multicast (
     message : MessageTemplate,
     peers   : string[],
-    timeout : number = this.config.req_timeout
+    options : Partial<RequestOptions> = {}
   ) : Promise<MulticastResponse> {
     const msg = finalize_message(message)
-    const sub = this.subscribe({ id : msg.id, peers }, { timeout })
-    const pub = this.broadcast(msg, peers)
+    const sub = this.subscribe({ id : msg.id, peers }, options)
+    const pub = this.broadcast(msg, peers, options)
     return Promise.all([ sub, pub ]).then(([ sub, pub ]) => {
       return { sub, pub }
     })
@@ -319,14 +328,16 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
    * Publishes a single message to a specific peer.
    * @param message  Message template to send
    * @param pubkey   Recipient's public key
+   * @param options  Optional configuration options
    * @returns        Publication status
    */
   async publish (
-    message : MessageTemplate,
-    pubkey  : string,
+    message  : MessageTemplate,
+    pubkey   : string,
+    options? : Partial<EventConfig>
   ) : Promise<PubResponse> {
     const msg = finalize_message(message)
-    return this._publish(msg, pubkey)
+    return this._publish(msg, pubkey, options)
   }
 
   /**
@@ -336,10 +347,10 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
    * @returns        Collected messages and status
    */
   async subscribe (
-    filter  : SubFilter,
-    options : Partial<SubConfig> = {}
+    filter   : SubFilter,
+    options? : Partial<SubConfig>
   ) : Promise<SubResponse> {
-    const config = get_sub_config(options)
+    const config = get_sub_config(this, options)
     return new Promise(resolve => {
       const { timeout, threshold }  = config
       const { id, peers = [], tag } = filter
@@ -375,7 +386,7 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
         if (typeof threshold === 'number' && authors.size >= threshold) {
           resolver(true, 'threshold')
         }
-        if (peers.length > 0 && peers.every(e => authors.has(e))) {
+        if (Array.isArray(peers) && peers.every(e => authors.has(e))) {
           resolver(true, 'complete')
         }
       }, timeout)
@@ -407,24 +418,54 @@ function finalize_message (template : MessageTemplate) : MessageData {
  * @param opt      Custom configuration options
  * @returns        Complete node configuration
  */
-function get_node_config (opt ?: Partial<NodeConfig>) {
-  return { ...NODE_CONFIG(), ...opt }
+function get_node_config (
+  opt : NodeOptions = {}
+) : NodeConfig {
+  const config = NODE_CONFIG()
+  const event  = { ...config.event,  ...opt.event  }
+  const filter = { ...config.filter, ...opt.filter }
+  return { ...config, event, filter }
+}
+
+/**
+ * Combines provided event configuration with defaults.
+ * @param node  Nostr node instance
+ * @param opt   Custom event configuration
+ * @returns     Complete event configuration
+ */
+function get_event_config (
+  node : NostrNode,
+  opt  : Partial<EventConfig> = {}
+) : EventConfig {
+  let { created_at = Util.now(), tags = [], ...rest } = opt
+  const event = node.config.event
+  tags = [ ...event.tags ?? [], ...opt.tags ?? [] ]
+  return { ...event, ...rest, created_at, tags }
 }
 
 /**
  * Combines custom filter settings with defaults.
+ * @param node     Nostr node instance
  * @param filter   Custom filter settings
  * @returns        Complete filter configuration
  */
-function get_filter_config (filter ?: Partial<EventFilter>) {
-  return { ...FILTER_CONFIG(), ...filter }
+function get_filter_config (
+  node   : NostrNode,
+  filter : Partial<EventFilter> = {}
+) : EventFilter {
+  return { ...node.config.filter, ...filter }
 }
 
 /**
  * Merges subscription options with defaults.
- * @param config   Custom subscription options
- * @returns        Complete subscription configuration
+ * @param node  Nostr node instance
+ * @param opt   Custom subscription options
+ * @returns     Complete subscription configuration
  */
-function get_sub_config (config : Partial<SubConfig>) {
-  return { ...CONFIG.DEFAULT_SUB_CONFIG(), ...config }
+function get_sub_config (
+  node : NostrNode, 
+  opt  : Partial<SubConfig> = {}
+) : SubConfig {
+  const timeout = opt.timeout ?? node.config.req_timeout
+  return { ...opt, timeout }   
 }
