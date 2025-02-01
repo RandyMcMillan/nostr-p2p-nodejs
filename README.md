@@ -287,7 +287,7 @@ node.inbox.tag.on('status', (msg : SignedMessage) => {
 The inbox emits several events that you can subscribe to for monitoring message handling:
 
 ```ts
-// Listen for successfully published messages
+// Listen for published messages.
 node.inbox.event.on('published', (msg: SignedMessage) => {
   console.log('Message published:', msg)
 })
@@ -348,24 +348,28 @@ Use `once` when you only need to handle the first occurrence of a message. The h
 #### Request Configuration
 ```ts
 const response = await node.multicast(message, peers, {
-  timeout: 5000,    // Maximum time to wait for responses
-  threshold: 3      // Resolve after receiving 3 responses
+  timeout: 5000,  // Maximum time to wait for responses.
+  threshold: 3    // Resolve after receiving 3 responses.
 })
 ```
 The multicast configuration allows you to fine-tune how responses are collected. The promise resolves either when the threshold is met or when the timeout is reached, whichever comes first.
 
 ## Development
 
+The project is built using the `rollup` bundler and `tsx` for live transpilation. The `script/build.sh` script will build the project and copy the necessary files to the `dist` directory.
+
 ```bash
-# Install dependencies
+# Install dependencies.
 npm install
 
-# Run tests
+# Run test suite
 npm test
 
-# Build package
+# Build package to dist directory.
 npm run build
 ```
+
+The test suite contains a basic implementation of a nostr relay, plus methods for generating a set of nodes. Please refer to the `test/tape.ts` file for more details.
 
 ## Roadmap
 
