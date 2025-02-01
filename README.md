@@ -4,160 +4,274 @@ Build your own peer-to-peer messaging protocol, transmitted by relays.
 
 ## Overview
 
-Nostr-P2P is a light-weight SDK for building your own end-to-end encrypted, peer-to-peer messaging protocol. It handles encryption, message routing, and relay management while providing a simple API for developers.
+This project provides a light-weight client for building your own peer-to-peer messaging protocol on-top of the Nostr relay network. The client handles peering, encryption, message routing, and relay management while providing a simple API for developers.
 
-### Core Features
+### Features
 
-* **End-to-End Encryption**: All messages are encrypted using AES-256-GCM with unique shared secrets per peer
-* **Type-Safe Event System**: Built with TypeScript for compile-time safety and better developer experience
-* **Flexible Message Routing**: Support for direct messages, broadcasts, and multi-peer requests
-* **Runtime Validation**: Message schemas enforced using Zod for reliable data handling
-* **Configurable Timeouts**: Customizable timeouts for requests and subscriptions
-* **Event Emitter System**: Rich event system for handling messages and node states
+* **Simplified Messaging**  
+  Provides a `SignedMessage` object for passing structured messages between peers, with support for direct messages, broadcasts, multicasts, and request-response.
 
-### Roadmap
+* **Event-Driven Routing**  
+  Includes an event-based inbox for handling incoming messages, with emitters for event type, message ID, peer pubkey, and topic tag.
 
-* Peer discovery: Currently, each node must be manually configured with a list of peers. It would be nice to have a message channel for peer discovery, with joins and leaves.
-* Public profiles: Nodes should be able to take advantage of public profiles to advertise their presence and metadata.
-* Private stores: Each node should be able to maintain a private store of data for configuration and state.
-* Shared stores: Nodes should be able to share data repositories with each other via shared stores.
+* **Encryption and Validation**  
+  Messages are end-to-end encrypted (AES-256-GCM) between peers, with strict runtime validation (using Zod).
+
+* **Message Receipts**  
+  Detailed promise-based receipts for asynchronous message delivery and response collection.
+
+* **Reference Node**  
+  Implements a generic `NostrNode` class with manageable relay connections, event filters, and timeouts.
 
 ## Installation
+
+The `nostr-p2p` package can be installed in both node and browser environments. It's available through the npm registry for node projects, and via the unpkg CDN for browser applications.
+
+### Node Environment
+
+For node environments, simply install the package using your preferred package manager:
 
 ```bash
 npm install @cmdcode/nostr-p2p
 ```
 
+Then, import the package in your project:
+
+```ts
+import { NostrNode } from '@cmdcode/nostr-p2p'
+```
+
+### Browser Environment
+
+You can include the package directly in your HTML file:
+
+```html
+<script src="https://unpkg.com/@cmdcode/nostr-p2p/dist/script.js"></script>
+<script>
+  const { NostrNode } = window.nostr_p2p
+</script>
+```
+
+You can also import it as a module in modern browsers:
+
+```html
+<script type="module">
+  import { NostrNode } from 'https://unpkg.com/@cmdcode/nostr-p2p/dist/module.js'
+</script>
+```
+
 ## Basic Usage
+
+The core component of this library is the `NostrNode` client, which handles all the complexities of peer-to-peer messaging.
+
+Each node can:
+- Connect to multiple relays for redundancy.
+- Send encrypted messages to specific peers.
+- Broadcast messages to multiple peers.
+- Handle request-response patterns.
+- Subscribe to specific message types or peers.
+- Manage message delivery receipts.
 
 ### Creating a Node
 
+Create a basic Nostr node and connect it to a relay:
+
 ```typescript
 import { NostrNode } from '@cmdcode/nostr-p2p'
-import { now } from '@cmdcode/nostr-p2p/utils'
+import { now }       from '@cmdcode/nostr-p2p/utils'
 
-// Configure event filtering
-const filter = {
-  kinds: [20004],  // Custom event kind for p2p messages
-  since: now()     // Only get events from now onwards
+const options = {
+  filter : {
+    kinds: [ 20004 ],  // Default event kind for p2p messages.
+    since: now()       // Only get events from now onwards.
+  }
 }
 
-// List of relays to connect to
+// List of relays to connect to.
 const relays = [
   'wss://relay.nostrdice.com',
   'wss://relay.snort.social'
 ]
 
-// Initialize and connect the node
-const node = new NostrNode(relays, seckey, { filter })
+// Create a new Nostr node.
+const node = new NostrNode(relays, seckey, options)
+// Connect to the relays.
 await node.connect()
 ```
 
 ### Message Structure
 
-Messages in nostr-p2p follow this format:
+Messages are structured in a basic format, with a message `id`, a topic `tag`, and a `data` payload.
 
-```typescript
-interface MessageData {
-  id: string      // 16-byte unique identifier (hex)
-  tag: string     // Topic/label for message routing
-  data: any       // The actual message payload
+```ts
+interface MessageTemplate {
+  data : Json    // The message payload, serialized as JSON.
+  id?  : string  // Identifier for tracking specific messages.
+  tag  : string  // A label to categorize and filter messages.
 }
+```
 
+Delivered messages also include the original nostr event, stored as `env` (short for envelope).
+
+```ts
 interface SignedMessage {
-  data: any           // Decrypted message payload
-  env: SignedEvent    // Original Nostr event
-  id: string          // Message identifier
-  tag: string         // Message topic
+  data : Json         // The message payload as JSON.
+  env  : SignedEvent  // Original signed nostr event.
+  id   : string       // The message identifier.
+  tag  : string       // The message topic.
 }
 ```
 
 ### Messaging API
 
-The SDK provides several methods for different messaging patterns, each serving a specific purpose:
+The `NostrNode` client provides several methods for sending and receiving messages.
 
-#### Direct Messages (publish)
-```typescript
-// Send to a single peer
-await node.publish({
-  tag: 'greeting',      // A label used to categorize and filter messages
-  data: 'Hello!',       // Your message payload - can be any serializable data
-  id: 'optional-msg-id' // Custom identifier for tracking specific messages
-}, peerPubkey)         // The recipient's public key
-```
-The `publish` method encrypts and sends a message to a single peer. The message is end-to-end encrypted using a shared secret derived from your private key and the recipient's public key. Only the intended recipient can decrypt the message.
+#### Direct Messages
 
-#### Broadcasts (broadcast)
-```typescript
-// Broadcast to multiple peers
-await node.broadcast({
-  tag: 'announcement',        // Topic or category for the message
-  data: 'Hello everyone!'     // Message content sent to all recipients
-}, peerPubkeys)              // Array of recipient public keys
-```
-`broadcast` sends the same message to multiple peers. Each recipient receives their own encrypted copy of the message, ensuring privacy even in group communications.
+The `publish` method encrypts and sends a message to a single peer:
 
-#### Request-Response Pattern (request)
-```typescript
-// Request-response pattern
-const response = await node.request({
-  tag: 'query',              // Identifies this as a query message
-  data: { type: 'status' }   // The query parameters
-}, peerPubkey, 5000)         // Recipient pubkey and 5s timeout
+```ts
+const res : Promise<PubResponse> = node.publish(
+  message : MessageTemplate,
+  peer_pk : string
+)
 ```
-The `request` method is used when you expect a response from the peer. It automatically handles message correlation and will reject the promise if no response is received within the timeout period.
 
-#### Multi-Peer Requests (multicast)
-```typescript
-// Multi-peer request
-const responses = await node.multicast({
-  tag: 'query',
-  data: { type: 'status' }
-}, peerPubkeys, 5000)        // Array of peers and timeout
+The message is end-to-end encrypted using the recipient's public key, so only the intended recipient can decrypt the message.
+
+#### Broadcasts
+
+The `broadcast` method sends a message to multiple peers:
+
+```ts
+const res : Promise<BroadcastResponse> = node.broadcast(
+  message : MessageTemplate,
+  peers   : string[]
+)
 ```
-`multicast` combines broadcasting with the request-response pattern. It sends a request to multiple peers and collects their responses, returning an array of all received responses within the timeout period.
+
+All messages share the same message `id` and `tag`, but each recipient receives their own encrypted copy.
+
+#### Request and Response
+
+The `request` method is useful when you expect a response from the peer:
+
+```ts
+const res : Promise<SubResponse> = node.request(
+  message : MessageTemplate,
+  peer_pk : string,
+  timeout : number
+)
+```
+
+It automatically handles message correlation and will reject the promise if no response is received within the timeout period.
+
+#### Multi-Peer Requests
+
+The `multicast` method is useful when you expect a response from multiple peers:
+
+```ts
+const res : Promise<MulticastResponse> = node.multicast(
+  message : MessageTemplate,
+  peers   : string[],
+  timeout : number
+)
+```
+
+It sends a request to multiple peers and collects their responses, returning an array of all received responses within the timeout period.
+
+#### Custom Subscriptions
+
+The `subscribe` method allows you to implement a custom message listener with a timeout:
+
+```ts
+// Custom subscription
+const sub : Promise<SubResponse> = node.subscribe (
+  filter  : EventFilter,
+  options : Partial<SubConfig>
+)
+```
+This method is useful when you need to implement a custom message listener that is not covered by the other methods.
 
 ### Event Handling
 
-The SDK provides a flexible event system for handling incoming messages. You can subscribe to messages using various filters:
+The SDK provides an event inbox system for handling incoming messages. You can listen for messages using various filters:
 
-```typescript
-// Listen for specific message IDs
-node.inbox.id.on('deadbeef', (msg: SignedMessage) => {
+#### On Message ID
+
+For tracking messages with a specific ID, such as responses to requests:
+
+```ts
+node.inbox.id.on('deadbeef', (msg : SignedMessage) => {
   console.log('Got message:', msg.data)
 })
 ```
-This is useful when you need to track specific messages, such as responses to requests. The handler will only be called for messages matching this exact ID.
 
-```typescript
-// Listen for messages from specific peers
-node.inbox.peer.on('pubkey123', (msg: SignedMessage) => {
+#### On Message Peer
+
+For tracking messages from a specific peer, based on their public key:
+
+```ts
+node.inbox.peer.on('pubkey123', (msg : SignedMessage) => {
   console.log('From peer:', msg.data)
 })
 ```
-Use this when you want to process all messages from a particular peer, regardless of their tags or content.
 
-```typescript
-// Listen for specific message topics
-node.inbox.tag.on('status', (msg: SignedMessage) => {
+#### On Message Topic
+
+Listens for messages with a specific topic, allowing you to handle different types of messages with dedicated handlers.
+
+```ts
+node.inbox.tag.on('status', (msg : SignedMessage) => {
   console.log('Status update:', msg.data)
 })
 ```
-Tag-based filtering allows you to handle different types of messages with dedicated handlers. This is particularly useful for implementing different features or protocols.
 
-```typescript
-// Node status events
-node.on('ready', (node) => console.log('Connected!'))
-node.on('close', (node) => console.log('Disconnected'))
-node.on('error', (error) => console.error('Error:', error))
-node.on('message', (msg) => console.log('Raw message:', msg))
+#### Inbox Events
+
+The inbox emits several events that you can subscribe to for monitoring message handling:
+
+```ts
+// Listen for successfully published messages
+node.inbox.event.on('published', (msg: SignedMessage) => {
+  console.log('Message published:', msg)
+})
+
+// Listen for broadcast results
+node.inbox.event.on('broadcast', (res: BroadcastResponse & MessageIdResponse) => {
+  console.log('Broadcast complete:', response)
+})
+
+// Listen for settled messages (completed deliveries)
+node.inbox.event.on('settled', (res: PubResponse & MessageIdResponse) => {
+  console.log('Message settled:', response)
+})
 ```
-The node itself emits events for connection state changes and errors, allowing you to monitor and respond to the node's status.
+
+These events provide real-time feedback on message delivery status:
+- `published ` : Emitted when a message is successfully published to the network
+- `broadcast ` : Emitted when a broadcast operation completes, including delivery status
+- `settled   ` : Emitted when a message delivery is fully settled (confirmed by relays)
+
+#### Node Events
+
+The node itself emits several events that provide comprehensive monitoring of its operation:
+
+```ts
+node.on('bounced',    (event_id: string, error: string) => console.log('Message bounced:', event_id, error))
+node.on('closed',     (node: NostrNode)    => console.log('Node closed:', node))
+node.on('debug',      (info: unknown)      => console.log('Debug:', info))
+node.on('error',      (error: unknown)     => console.error('Node error:', error))
+node.on('info',       (info: Json)         => console.log('Info:', info))
+node.on('message',    (msg: SignedMessage) => console.log('Received message:', msg))
+node.on('ready',      (node: NostrNode)    => console.log('Node is ready:', node))
+node.on('subscribed', (sub_id: string, filter: EventFilter) => console.log('New subscription:', sub_id, filter))
+```
 
 ### Advanced Features
 
 #### Subscription Options
-```typescript
+```ts
 // Time-limited subscriptions
 node.inbox.tag.within('status', (msg) => {
   console.log('Status within 5s:', msg)
@@ -165,7 +279,7 @@ node.inbox.tag.within('status', (msg) => {
 ```
 The `within` method creates a temporary subscription that automatically unsubscribes after the specified timeout. This is useful for gathering time-sensitive responses.
 
-```typescript
+```ts
 // One-time handlers
 node.inbox.id.once('deadbeef', (msg) => {
   console.log('First response:', msg)
@@ -174,27 +288,13 @@ node.inbox.id.once('deadbeef', (msg) => {
 Use `once` when you only need to handle the first occurrence of a message. The handler automatically unsubscribes after being triggered once.
 
 #### Request Configuration
-```typescript
+```ts
 const response = await node.multicast(message, peers, {
   timeout: 5000,    // Maximum time to wait for responses
   threshold: 3      // Resolve after receiving 3 responses
 })
 ```
 The multicast configuration allows you to fine-tune how responses are collected. The promise resolves either when the threshold is met or when the timeout is reached, whichever comes first.
-
-## Security
-
-- Messages are encrypted using AES-256-GCM with unique shared secrets per peer
-- Shared secrets are derived using ECDH with secp256k1
-- All messages are signed using Schnorr signatures
-- Runtime validation ensures message integrity
-
-## Dependencies
-
-- `@noble/curves --` : Cryptographic primitives
-- `@noble/ciphers -` : AES encryption
-- `nostr-tools ----` : Nostr protocol utilities
-- `zod ------------` : Schema validation
 
 ## Development
 
@@ -208,6 +308,26 @@ npm test
 # Build package
 npm run build
 ```
+
+## Roadmap
+
+Here is a list of features that are planned for future releases:
+
+* **Peer Discovery**  
+  Currently, each node must be manually configured with a list of peers. We plan to implement 
+  a message channel for automatic peer discovery, including join/leave notifications.
+
+* **Public Profiles**  
+  Enable nodes to leverage public profiles for advertising their presence and sharing metadata 
+  with the network.
+
+* **Private Stores**  
+  Implement a secure, local storage system for each node to maintain configuration and state 
+  data persistently.
+
+* **Shared Stores**  
+  Develop a distributed data sharing mechanism allowing nodes to maintain and synchronize 
+  shared data repositories.
 
 ## Resources
 
