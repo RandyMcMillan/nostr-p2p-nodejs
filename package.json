@@ -1,6 +1,6 @@
 {
   "name": "@cmdcode/nostr-p2p",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "Basic peer-to-peer messaging, transmitted over relays.",
   "author": "Christopher Scott",
   "license": "MIT",
@@ -38,6 +38,7 @@
   },
   "scripts": {
     "build": "./script/build.sh",
+    "demo": "npm run load test/demo.ts",
     "load": "tsx --tsconfig ./test/tsconfig.json",
     "release": "npm run test && npm run build && npm publish",
     "scratch": "npm run load test/scratch.ts",
@@ -65,7 +66,6 @@
     "@cmdcode/buff": "^2.2.5",
     "@noble/ciphers": "^1.0.0",
     "@noble/curves": "^1.6.0",
-    "@nostr-dev-kit/ndk": "^2.10.5",
     "nostr-tools": "^2.10.4",
     "zod": "^3.23.8"
   }

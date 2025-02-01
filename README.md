@@ -357,7 +357,9 @@ node.on('subscribed', (sub_id: string, filter: EventFilter) => console.log('New 
 
 ### Advanced Features
 
-#### Subscription Options
+Here are some advanced features that you can use:
+
+#### Event Handling Options
 ```ts
 // Time-limited subscriptions
 node.inbox.tag.within('status', (msg) => {
@@ -373,7 +375,38 @@ node.inbox.id.once('deadbeef', (msg) => {
 })
 ```
 Use `once` when you only need to handle the first occurrence of a message. The handler automatically unsubscribes after being triggered once.
+
+### Demo Example
+
+Here is a basic example of how to pass a message between two nodes:
+
+```ts
+// Create the actors.
+const Alice = new NostrNode(relays, alice_sk)
+const Bob   = new NostrNode(relays, bob_sk)
+
+// Configure the Alice node.
+Alice.inbox.tag.on('ping', (msg) => {
+  const res = { id: msg.id, tag: 'pong', data: 'pong!' }
+  Alice.publish(res, msg.env.pubkey)
+})
+
+Alice.on('ready', () => {
+  console.log('alice connected')
+})
+
+// Configure the Bob node.
+Bob.inbox.tag.on('pong', (msg) => {
+  console.log('received pong message:', msg.data)
+  cleanup()
+})
+
+Bob.on('ready', () => {
+  console.log('bob connected')
+  Bob.publish({ tag: 'ping', data: 'ping!' }, Alice.pubkey)
+})
 ```
+You can see a full example of this in the `test/demo.ts` file, and run the demo yourself with `npm run demo`.
 
 ## Development
 
@@ -414,10 +447,13 @@ Here is a list of features that are planned for future releases:
 
 ## Resources
 
-- [Noble Curves](https://github.com/paulmillr/noble-curves)
-- [Noble Ciphers](https://github.com/paulmillr/noble-ciphers)
-- [Nostr Tools](https://github.com/nostr-tools)
-- [Zod](https://github.com/colinhacks/zod)
+This project uses the following open source libraries:
+
+- [Buff](https://github.com/cmdcode/buff): Swiss-army knife for byte manipulation and encoding.
+- [Noble Curves](https://github.com/paulmillr/noble-curves): A fast, lightweight ECC library.
+- [Noble Ciphers](https://github.com/paulmillr/noble-ciphers): A fast, lightweight encryption library.
+- [Nostr Tools](https://github.com/nostr-tools): Tools for working with the Nostr protocol.
+- [Zod](https://github.com/colinhacks/zod): Run-time data validation library.
 
 ## License
 
