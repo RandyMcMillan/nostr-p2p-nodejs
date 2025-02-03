@@ -1,6 +1,6 @@
 {
   "name": "@cmdcode/nostr-p2p",
-  "version": "2.0.4",
+  "version": "2.0.6",
   "description": "Basic peer-to-peer messaging, transmitted over relays.",
   "author": "Christopher Scott",
   "license": "MIT",
@@ -38,11 +38,11 @@
   },
   "scripts": {
     "build": "./script/build.sh",
-    "demo": "npm run load test/demo.ts",
-    "load": "tsx --tsconfig ./test/tsconfig.json",
-    "release": "npm run test && npm run build && npm publish",
-    "scratch": "npm run load test/scratch.ts",
-    "test": " npm run load test/tape.ts | colortape"
+    "demo": "npm run loader test/demo.ts",
+    "loader": "tsx --tsconfig ./test/tsconfig.json",
+    "release": "npm run test && npm run build",
+    "scratch": "npm run loader test/scratch.ts",
+    "test": " npm run loader test/tape.ts | colortape"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^28.0.1",
