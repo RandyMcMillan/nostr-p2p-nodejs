@@ -17,8 +17,8 @@ export type MessagePayload = [
   data : string
 ]
 
-export interface SignedMessage {
-  data : Json
+export interface SignedMessage<T = Json> {
+  data : T
   env  : SignedEvent
   id   : string
   tag  : string
