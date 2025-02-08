@@ -1,56 +1,19 @@
+import { verify_event } from './event.js'
 import { is_recipient } from './util.js'
 
 import {
   decrypt_content,
-  encrypt_content,
   get_pubkey,
   get_shared_secret
 } from './crypto.js'
 
-import {
-  sign_event,
-  verify_event
-} from './event.js'
-
 import type {
-  EventConfig,
   SignedEvent,
   SignedMessage
-} from '../types/index.js'
+} from '@/types/index.js'
 
-import * as CONST  from '../const.js'
-import * as Util   from '@/util/index.js'
-import Schema      from '../schema/index.js'
-
-/**
- * Creates a signed event envelope containing encrypted message content.
- * @param config   Event configuration
- * @param content  String content to encrypt and send
- * @param peer_pk  Recipient's public key
- * @param seckey   Sender's secret key in hex format
- * @returns        Signed Nostr event containing the encrypted message
- */
-export function create_envelope (
-  config  : EventConfig,
-  payload : string,
-  peer_pk : string,
-  seckey  : string,
-) : SignedEvent {
-  // get created_at
-  const created_at = config.created_at ?? Util.now()
-  // get pubkey
-  const pubkey  = get_pubkey(seckey)
-  // get shared secret
-  const secret  = get_shared_secret(seckey, peer_pk)
-  // encrypt payload
-  const content = encrypt_content(secret, payload)
-  // Create an event template.
-  const event   = { ...config, pubkey, content, created_at }
-  // Add a tag for the peer's public key.
-  event.tags.push([ 'p', peer_pk ])
-  // Return the signed event.
-  return sign_event(seckey, event)
-}
+import * as CONST  from '@/const.js'
+import Schema      from '@/schema/index.js'
 
 /**
  * Decrypts and validates an incoming message envelope.
@@ -59,7 +22,7 @@ export function create_envelope (
  * @returns        Decrypted message content as string
  * @throws {Error} If event validation fails or recipient is not in peers list
  */
-export function parse_envelope (
+export function decrypt_envelope (
   event  : SignedEvent,
   seckey : string
 ) : string {
@@ -88,12 +51,16 @@ export function parse_envelope (
  * @param id    Unique message identifier
  * @returns     JSON stringified array of [tag, id, data]
  */
-export function create_payload (
+export function create_envelope (
   tag  : string,
   data : string,
   id   : string
 ) : string {
-  return JSON.stringify([ tag, id, data ])
+  try {
+    return JSON.stringify([ tag, id, data ])
+  } catch (err) {
+    throw new Error('failed to create envelope')
+  }
 }
 
 /**
@@ -103,15 +70,15 @@ export function create_payload (
  * @returns        Parsed and validated message object
  * @throws {Error} If payload fails schema validation
  */
-export function parse_payload (
-  payload : string,
-  event   : SignedEvent
+export function parse_envelope (
+  envelope : string,
+  event    : SignedEvent
 ) : SignedMessage {
-  const schema = Schema.event.envelope
-  const parsed = schema.safeParse(payload)
+  const schema = Schema.msg.envelope
+  const parsed = schema.safeParse(envelope)
   if (!parsed.success) {
     if (CONST.DEBUG) console.log(parsed.error)
-    throw new Error('payload failed schema validation')
+    throw new Error('envelope failed schema validation')
   }
   const [ tag, id, data ] = parsed.data
   return { env: event, data, id, tag }

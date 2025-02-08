@@ -2,21 +2,21 @@ import EventEmitter from './emitter.js'
 
 import { Buff }           from '@cmdcode/buff'
 import { SimplePool }     from 'nostr-tools'
-import { get_pubkey }     from '../lib/crypto.js'
-import { gen_message_id } from '../lib/util.js'
 import { SubCloser }      from 'nostr-tools/abstract-pool'
+import { get_pubkey }     from '@/lib/crypto.js'
+import { create_event }   from '@/lib/event.js'
+import { gen_message_id } from '@/lib/util.js'
 
 import {
-  create_payload,
   create_envelope,
-  parse_envelope,
-  parse_payload
-} from '../lib/message.js'
+  decrypt_envelope,
+  parse_envelope
+} from '@/lib/message.js'
 
 import {
   verify_relays,
   verify_seckey
-} from '../lib/validate.js'
+} from '@/lib/validate.js'
 
 import type {
   EventFilter,
@@ -38,11 +38,9 @@ import type {
   EventConfig,
   NodeOptions,
   DeliveryOptions
-} from '../types/index.js'
+} from '@/types/index.js'
 
-import * as Util from '../util/index.js'
-
-import 'websocket-polyfill'
+import * as Util from '@/util/index.js'
 
 /**
  * Default configuration settings for a Nostr node.
@@ -124,8 +122,8 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
   private _handler = (event : SignedEvent) => {
     try {
       // Decrypt and parse the incoming message
-      const payload = parse_envelope(event, this._seckey.hex)
-      const msg     = parse_payload(payload, event)
+      const payload = decrypt_envelope(event, this._seckey.hex)
+      const msg     = parse_envelope(payload, event)
 
       // Route message to all relevant subscribers
       this.emit('message', msg)
@@ -152,8 +150,8 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
     // Create and sign the message envelope
     const cache    = options?.cache ?? new Map<string, PubResponse>()
     const config   = get_event_config(this, options)
-    const payload  = create_payload(message.tag, message.data, message.id)
-    const event    = create_envelope(config, payload, peer_pk, this._seckey.hex)
+    const payload  = create_envelope(message.tag, message.data, message.id)
+    const event    = create_event(config, payload, peer_pk, this._seckey.hex)
     const signed   = { ...message, env : event }
 
     // Publish to all connected relays

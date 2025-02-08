@@ -1,7 +1,6 @@
 import NostrNode    from '@/class/client.js'
 import EventEmitter from '@/class/emitter.js'
 
-import type { Json }          from './base.js'
 import type { SignedMessage } from './msg.js'
 
 import type { EventConfig, EventFilter } from './event.js'
@@ -51,7 +50,7 @@ export interface NodeEventMap extends Record<string, any> {
   'closed'     : NostrNode
   'debug'      : unknown
   'error'      : unknown
-  'info'       : Json
+  'info'       : unknown
   'message'    : SignedMessage
   'ready'      : NostrNode
   'subscribed' : [ sub_id : string, filter : EventFilter ]

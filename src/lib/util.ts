@@ -3,7 +3,7 @@ import { Buff } from '@cmdcode/buff'
 import type {
   EventTemplate,
   SignedEvent
-} from '../types/index.js'
+} from '@/types/index.js'
 
 /**
  * Generates a random 16-byte message identifier in hexadecimal format.

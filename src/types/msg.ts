@@ -1,4 +1,3 @@
-import { Json }        from './base.js'
 import { SignedEvent } from './event.js'
 
 export interface MessageTemplate {
@@ -17,7 +16,7 @@ export type MessagePayload = [
   data : string
 ]
 
-export interface SignedMessage<T = Json> {
+export interface SignedMessage<T = any> {
   data : T
   env  : SignedEvent
   id   : string
