@@ -1,5 +1,5 @@
 import { verify_event } from './event.js'
-import { is_recipient } from './util.js'
+import { gen_message_id, is_recipient } from './util.js'
 
 import {
   decrypt_content,
@@ -8,6 +8,8 @@ import {
 } from './crypto.js'
 
 import type {
+  MessageData,
+  MessageTemplate,
   SignedEvent,
   SignedMessage
 } from '@/types/index.js'
@@ -22,7 +24,7 @@ import Schema      from '@/schema/index.js'
  * @returns        Decrypted message content as string
  * @throws {Error} If event validation fails or recipient is not in peers list
  */
-export function decrypt_envelope (
+export function decrypt_payload (
   event  : SignedEvent,
   seckey : string
 ) : string {
@@ -45,13 +47,25 @@ export function decrypt_envelope (
 }
 
 /**
+ * Ensures a message template has a valid ID.
+ * @param template  Message template to finalize
+ * @returns         Completed message data
+ */
+export function finalize_message (
+  template : MessageTemplate
+) : MessageData {
+  const id = template.id ?? gen_message_id()
+  return { ...template, id }
+}
+
+/**
  * Creates a JSON string payload containing message metadata.
  * @param tag   Message type identifier
  * @param data  Message content
  * @param id    Unique message identifier
  * @returns     JSON stringified array of [tag, id, data]
  */
-export function create_envelope (
+export function create_payload (
   tag  : string,
   data : string,
   id   : string
@@ -59,7 +73,7 @@ export function create_envelope (
   try {
     return JSON.stringify([ tag, id, data ])
   } catch (err) {
-    throw new Error('failed to create envelope')
+    throw new Error('failed to create message payload')
   }
 }
 

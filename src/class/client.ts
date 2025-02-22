@@ -8,8 +8,9 @@ import { create_event }   from '@/lib/event.js'
 import { gen_message_id } from '@/lib/util.js'
 
 import {
-  create_envelope,
-  decrypt_envelope,
+  finalize_message,
+  create_payload,
+  decrypt_payload,
   parse_envelope
 } from '@/lib/message.js'
 
@@ -122,7 +123,7 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
   private _handler = (event : SignedEvent) => {
     try {
       // Decrypt and parse the incoming message
-      const payload = decrypt_envelope(event, this._seckey.hex)
+      const payload = decrypt_payload(event, this._seckey.hex)
       const msg     = parse_envelope(payload, event)
 
       // Route message to all relevant subscribers
@@ -150,7 +151,7 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
     // Create and sign the message envelope
     const cache    = options?.cache ?? new Map<string, PubResponse>()
     const config   = get_event_config(this, options)
-    const payload  = create_envelope(message.tag, message.data, message.id)
+    const payload  = create_payload(message.tag, message.data, message.id)
     const event    = create_event(config, payload, peer_pk, this._seckey.hex)
     const signed   = { ...message, env : event }
 
@@ -399,16 +400,6 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
     if (this._sub !== null) this._sub.close()
     return this._subscribe(filter)
   }
-}
-
-/**
- * Ensures a message template has a valid ID.
- * @param template  Message template to finalize
- * @returns         Completed message data
- */
-function finalize_message (template : MessageTemplate) : MessageData {
-  const id = template.id ?? gen_message_id()
-  return { ...template, id }
 }
 
 /**
