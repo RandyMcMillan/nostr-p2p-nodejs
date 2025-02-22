@@ -21,6 +21,7 @@ export interface PubResponse {
   acks    : string[]
   fails   : string[]
   ok      : boolean
+  data    : SignedMessage
   peer_pk : string
 }
 

@@ -164,7 +164,7 @@ export default class NostrNode extends EventEmitter <NodeEventMap> {
       const fails  = this.relays.filter(r => !acks.includes(r))
       const msg_id = message.id
       const ok     = acks.length > 0
-      const res    = { acks, fails, ok, peer_pk }
+      const res    = { acks, fails, ok, peer_pk, data : signed }
 
       cache.set(peer_pk, res)
       this._inbox.event.emit('settled', { ...res, msg_id })
